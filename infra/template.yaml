@@ -102,14 +102,38 @@ Resources:
                 Resource: !Sub ${FunctionLogGroup.Arn}:*
               - Sid: WhatsApp
                 Effect: Allow
-                Action: [social-messaging:SendWhatsAppMessage, social-messaging:GetWhatsAppMessageMedia]
+                Action:
+                  - social-messaging:SendWhatsAppMessage
+                  - social-messaging:GetWhatsAppMessageMedia
+                  - social-messaging:PostWhatsAppMessageMedia
                 Resource: !Sub
                   - arn:aws:social-messaging:${AWS::Region}:${AWS::AccountId}:phone-number-id/${Suffix}
                   - Suffix: !Select [1, !Split ["phone-number-id-", !Ref PhoneNumberId]]
               - Sid: Media
                 Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
-                Resource: !Sub ${MediaBucket.Arn}/inbound/*
+                Resource:
+                  - !Sub ${MediaBucket.Arn}/inbound/*
+                  - !Sub ${MediaBucket.Arn}/transcripts/*
+                  - !Sub ${MediaBucket.Arn}/outbound/*
+              - Sid: MediaList
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt MediaBucket.Arn
+                Condition:
+                  StringLike: { "s3:prefix": ["inbound/*"] }
+              - Sid: VoiceNotesStart  # StartTranscriptionJob does not scope cleanly to a job ARN
+                Effect: Allow
+                Action: transcribe:StartTranscriptionJob
+                Resource: "*"
+              - Sid: VoiceNotesGet
+                Effect: Allow
+                Action: transcribe:GetTranscriptionJob
+                Resource: !Sub arn:aws:transcribe:${AWS::Region}:${AWS::AccountId}:transcription-job/jhola-*
+              - Sid: VoiceReply
+                Effect: Allow
+                Action: polly:SynthesizeSpeech
+                Resource: "*"
               - Sid: State
                 Effect: Allow
                 Action:
@@ -163,6 +187,7 @@ Resources:
           JHOLA_BEDROCK_REGION: !Ref BedrockRegion
           JHOLA_MODEL_ID: !Ref ModelId
           JHOLA_STATE_PATH: /tmp/jhola.json
+          JHOLA_VOICE_REPLY: "1"
       Events:
         WhatsAppEvents:
           Type: SNS
