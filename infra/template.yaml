@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Jhola WhatsApp agent (End User Messaging Social -> SNS -> Lambda -> Bedrock via cross-account role)
+Description: Jhola WhatsApp agent (End User Messaging Social -> SNS -> Lambda -> Bedrock via cross-account role) and console API
 
 Parameters:
   WhatsAppTopicArn:
@@ -28,6 +28,13 @@ Parameters:
   BedrockRegion:
     Type: String
     Default: us-east-1
+  DemoKeyParameter:
+    Type: String
+    Default: /jhola/demo-key
+    Description: SSM SecureString (created outside CloudFormation) with the console demo key
+  ConsoleOrigins:
+    Type: CommaDelimitedList
+    Default: "https://jhola-phi.vercel.app,http://localhost:3000"
 
 Conditions:
   UseBedrockRole: !Not [!Equals [!Ref BedrockRoleArn, ""]]
@@ -81,6 +88,12 @@ Resources:
       LogGroupName: /aws/lambda/jhola-whatsapp-agent
       RetentionInDays: 14
 
+  ConsoleLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/jhola-console-api
+      RetentionInDays: 14
+
   FunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -99,7 +112,9 @@ Resources:
               - Sid: Logs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub ${FunctionLogGroup.Arn}:*
+                Resource:
+                  - !Sub ${FunctionLogGroup.Arn}:*
+                  - !Sub ${ConsoleLogGroup.Arn}:*
               - Sid: WhatsApp
                 Effect: Allow
                 Action:
@@ -137,8 +152,21 @@ Resources:
               - Sid: State
                 Effect: Allow
                 Action:
-                  [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:Query, dynamodb:BatchWriteItem]
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:BatchWriteItem
                 Resource: [!GetAtt StateTable.Arn, !GetAtt ProcessedTable.Arn]
+              - Sid: DemoKey
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DemoKeyParameter}
+              - Sid: ConsoleJobs  # the console API runs slow work (chat, rule drafts) in async self-invocations
+                Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:jhola-console-api
               - !If
                 - UseBedrockRole
                 - Sid: AssumeBedrockRole
@@ -194,7 +222,86 @@ Resources:
           Properties:
             Topic: !Ref WhatsAppTopicArn
 
+  ConsoleHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Description: Jhola console API
+      CorsConfiguration:
+        AllowOrigins: !Ref ConsoleOrigins
+        AllowMethods: [GET, POST, DELETE, OPTIONS]
+        AllowHeaders: [content-type, x-jhola-demo-key]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  ConsoleFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+      BuildInSource: true
+    Properties:
+      FunctionName: jhola-console-api
+      CodeUri: ../agent
+      Handler: jhola.api_handler.handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      MemorySize: 1024
+      Timeout: 120
+      Role: !GetAtt FunctionRole.Arn  # same role: the Bedrock account trusts only this role
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: WARN
+        LogGroup: !Ref ConsoleLogGroup
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 300
+      Environment:
+        Variables:
+          JHOLA_TABLE: !Ref StateTable
+          JHOLA_DEDUPE_TABLE: !Ref ProcessedTable
+          JHOLA_MEDIA_BUCKET: !Ref MediaBucket
+          JHOLA_PHONE_NUMBER_ID: !Ref PhoneNumberId
+          JHOLA_ADMIN_PHONE: !Ref AdminPhone
+          JHOLA_DEMO_PHONES: !Ref DemoPhones
+          JHOLA_BEDROCK_ROLE_ARN: !Ref BedrockRoleArn
+          JHOLA_BEDROCK_PROFILE: ""
+          JHOLA_BEDROCK_REGION: !Ref BedrockRegion
+          JHOLA_MODEL_ID: !Ref ModelId
+          JHOLA_STATE_PATH: /tmp/jhola.json
+          JHOLA_DEMO_KEY_PARAM: !Ref DemoKeyParameter
+          JHOLA_RATE_READ: "120"
+          JHOLA_RATE_WRITE: "20"
+      Events:
+        ApiGet:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ConsoleHttpApi, Method: GET, Path: "/api/{proxy+}" }
+        ApiPost:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ConsoleHttpApi, Method: POST, Path: "/api/{proxy+}" }
+        ApiDelete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ConsoleHttpApi, Method: DELETE, Path: "/api/{proxy+}" }
+        SundayRefill:
+          Type: ScheduleV2
+          Properties:
+            Name: jhola-weekly-refill
+            Description: Sunday 09:00 IST weekly refill proposal to the household admin on WhatsApp
+            ScheduleExpression: cron(0 9 ? * SUN *)
+            ScheduleExpressionTimezone: Asia/Kolkata
+            Input: '{"jhola_job": "weekly_refill"}'
+            RetryPolicy: { MaximumRetryAttempts: 0 }
+
 Outputs:
+  ApiBaseUrl:
+    Description: Console API base URL (routes under /api)
+    Value: !Sub https://${ConsoleHttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  ConsoleFunctionName:
+    Value: !Ref ConsoleFunction
+  DemoKeyParameterName:
+    Description: SSM SecureString holding the x-jhola-demo-key value
+    Value: !Ref DemoKeyParameter
   FunctionName:
     Value: !Ref JholaFunction
   FunctionRoleArn:

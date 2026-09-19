@@ -41,6 +41,10 @@ Repository: InMemory / JsonFile (local), DynamoDB (AWS)              store.py
 | `vision.py` | `BedrockVisionReader` (Converse API with the image) and `FixtureVisionReader` (offline) |
 | `whatsapp.py` | WhatsApp channel: parses End User Messaging Social webhook events, dedupes, media via S3, voice notes via Transcribe, demo persona commands, replies with text / reply buttons / Polly voice |
 | `lambda_handler.py` | Lambda entry point (SNS event -> `WhatsAppChannel`), wired to DynamoDB, S3 and socialmessaging. See `../infra/README.md` |
+| `api.py` | Console API logic: household, orders, audit, approvals, web chat, rules, red team, refill, demo reset |
+| `api_handler.py` | Console Lambda entry point: HTTP API routing, demo key, per-IP rate limit, async jobs, Sunday refill schedule |
+| `rules.py` | Custom household rules: Bedrock drafts Cedar from plain English / Hinglish, cedarpy validates (one repair attempt), test requests are evaluated, activation pins ids to `custom-<id>` |
+| `redteam.py` | Injection, overspend and forbidden-category attacks with a compromised stub model, run in a sandbox |
 | `stub_model.py` | `ScriptedModel`, a Strands model provider that emits scripted tool calls, so the full loop runs without an LLM |
 | `scenarios.py` | Demo scenarios A to F |
 | `data/` | 198-SKU catalog, Gupta family household (members, roles, preferences, 6 weeks of history), recipes |
@@ -61,6 +65,14 @@ Repository: InMemory / JsonFile (local), DynamoDB (AWS)              store.py
 
 Every decision returns the matching policy ids, an English reason and a short Hinglish line.
 
+Custom rules added from the console (`/api/rules/draft`, then `/api/rules/activate`) are evaluated
+together with these base policies on every later order; forbid always wins. Product entities carry
+`name`, `brand`, `category`, `tags` (Set of lowercase words such as "chocolate"), `price_inr` and
+`seller_rating`, so a rule like "no chocolate for Aarav" is `resource.tags.contains("chocolate")`.
+
+Item search matches the catalog's Hindi / Hinglish aliases ("arhar ki dal", "kothmir", "pyaj",
+"dudh"), and an unrequested processed form (powder) ranks below the fresh item.
+
 ## Run
 
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
@@ -68,7 +80,7 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 cd agent
 uv sync
-uv run pytest                              # Cedar policy, payment gating and scenario tests
+uv run pytest                              # Cedar policy, payment gating, scenario and console API tests
 uv run python -m jhola.scenarios           # scenarios A-F with the scripted stub model (offline)
 uv run python -m jhola.scenarios C --audit # one scenario, with the full audit trail
 uv run python -m jhola.parchi samples/parchi.jpg   # render the synthetic parchi image
@@ -112,6 +124,22 @@ reply = handle_message("+919999900003", text=None, image_bytes=jpg, media_type="
 reply.text, reply.buttons, reply.notifications   # notifications: messages for other members (e.g. Mom)
 handle_approval("+919999900001", "JH-20260920-0001", "approve")
 ```
+
+`handle_message` also takes `channel` ("whatsapp" / "web"), `input_type` ("text" / "image" / "voice")
+and `session_key` (conversation history key, default the member's phone); orders are stamped with
+channel and input type.
+
+### Console HTTP API
+
+`jhola.api_handler.handler` serves the web console. The routes, access rules and the async job
+pattern are documented in `../infra/README.md`.
+
+| Method | Path | Access |
+|---|---|---|
+| GET | `/api/household`, `/api/orders`, `/api/audit`, `/api/approvals`, `/api/jobs/{id}` | public |
+| POST | `/api/chat`, `/api/rules/draft`, `/api/redteam` | public, rate limited |
+| POST | `/api/approvals/{order_id}`, `/api/rules/activate`, `/api/refill/run`, `/api/demo/reset` | `x-jhola-demo-key` |
+| DELETE | `/api/rules/{id}` | `x-jhola-demo-key` |
 
 On AWS, `jhola.lambda_handler.handler` runs the same agent behind WhatsApp with `DynamoDBRepository`
 (see `../infra/README.md`). The module-level functions use a local JSON state file (`agent/.state/jhola.json`). For tests or a
