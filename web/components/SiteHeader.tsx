@@ -6,6 +6,7 @@ const nav = [
   { href: "/#rules", label: "Household rules" },
   { href: "/#safety", label: "Safety" },
   { href: "/#faq", label: "FAQ" },
+  { href: "/store", label: "Store concept" },
 ];
 
 export default function SiteHeader() {
@@ -19,7 +20,7 @@ export default function SiteHeader() {
             झोला
           </span>
         </Link>
-        <nav aria-label="Main" className="hidden items-center gap-7 text-sm font-medium text-ink-soft md:flex">
+        <nav aria-label="Main" className="hidden items-center gap-7 text-sm font-medium text-ink-soft lg:flex">
           {nav.map((item) => (
             <Link key={item.href} href={item.href} className="transition-colors hover:text-ink">
               {item.label}
@@ -27,10 +28,14 @@ export default function SiteHeader() {
           ))}
         </nav>
         <Link
-          href="/#how"
-          className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-cream transition-colors hover:bg-ink/90"
+          href="/console"
+          className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-cream transition-colors hover:bg-ink/90"
         >
-          See how it works
+          <span className="relative flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-turmeric opacity-70 motion-reduce:animate-none" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-turmeric" />
+          </span>
+          Live console
         </Link>
       </div>
     </header>

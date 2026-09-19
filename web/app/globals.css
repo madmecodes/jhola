@@ -111,3 +111,17 @@ details[open] .faq-plus {
     scroll-behavior: auto;
   }
 }
+
+/* Cedar policy source, highlighted by components/console/CedarCode.tsx. */
+.cedar {
+  background: #18214a;
+  color: #e9e4d6;
+}
+.cedar .cd-comment { color: #8f97b8; font-style: italic; }
+.cedar .cd-string { color: #b9dcb0; }
+.cedar .cd-annot { color: #f0c46a; }
+.cedar .cd-kw { color: #f2a58f; font-weight: 600; }
+.cedar .cd-bool,
+.cedar .cd-num { color: #9fd0e8; }
+.cedar .cd-type { color: #e0b98c; }
+.cedar .cd-op { color: #f7e3b3; }

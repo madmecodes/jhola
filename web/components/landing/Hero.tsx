@@ -1,3 +1,4 @@
+import Link from "next/link";
 import HeroVisual from "./HeroVisual";
 
 const inputs = ["Photo of a handwritten list", "Voice note in Hindi or English", "A quick text"];
@@ -35,9 +36,15 @@ export default function Hero() {
             ))}
           </ul>
           <div className="mt-9 flex flex-wrap items-center gap-3">
+            <Link
+              href="/console/try"
+              className="rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream shadow-sm transition-colors hover:bg-ink/90"
+            >
+              Try the live demo
+            </Link>
             <a
               href="#how"
-              className="rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream shadow-sm transition-colors hover:bg-ink/90"
+              className="rounded-full border border-ink/25 px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-ink/60"
             >
               How it works
             </a>
