@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* Jhola palette. Change colours here; Tailwind utilities (bg-cream, text-ink, ...) follow. */
+:root {
+  --cream: #fbf6ec;
+  --paper: #fffdf7;
+  --sand: #f3e9d6;
+  --ink: #1f2a5a;
+  --ink-soft: #4a5480;
+  --turmeric: #e0a526;
+  --turmeric-soft: #f7e3b3;
+  --leaf: #2f7a4f;
+  --leaf-soft: #dcebdc;
+  --terracotta: #c4553a;
+  --terracotta-soft: #f5ddd4;
+  --jute: #a77b4f;
+  --line: #e7dac2;
+  --chat-bg: #efe6d3;
+  --chat-out: #dff0d8;
+}
+
+@theme inline {
+  --color-cream: var(--cream);
+  --color-paper: var(--paper);
+  --color-sand: var(--sand);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-turmeric: var(--turmeric);
+  --color-turmeric-soft: var(--turmeric-soft);
+  --color-leaf: var(--leaf);
+  --color-leaf-soft: var(--leaf-soft);
+  --color-terracotta: var(--terracotta);
+  --color-terracotta-soft: var(--terracotta-soft);
+  --color-jute: var(--jute);
+  --color-line: var(--line);
+  --color-chat-bg: var(--chat-bg);
+  --color-chat-out: var(--chat-out);
+
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-hindi: var(--font-tiro), var(--font-fraunces), serif;
+  --font-hand: var(--font-caveat), var(--font-kalam), cursive;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--cream);
+  /* Faint woven jute texture: two crossing hairline weaves. */
+  background-image:
+    repeating-linear-gradient(0deg, rgba(167, 123, 79, 0.045) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(90deg, rgba(167, 123, 79, 0.035) 0 1px, transparent 1px 6px);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--turmeric-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--turmeric);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Stitched edge used on cards to echo a sewn cloth bag. */
+.stitch {
+  position: relative;
+}
+.stitch::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 1.5px dashed rgba(167, 123, 79, 0.35);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Ruled notebook paper for the parchi. */
+.ruled {
+  background-color: #fffaf0;
+  background-image:
+    linear-gradient(90deg, transparent 22px, rgba(196, 85, 58, 0.35) 22px 23px, transparent 23px),
+    repeating-linear-gradient(180deg, transparent 0 25px, rgba(31, 42, 90, 0.13) 25px 26px);
+}
+
+/* WhatsApp-like chat wallpaper, built from soft dots. */
+.chat-wallpaper {
+  background-color: var(--chat-bg);
+  background-image: radial-gradient(rgba(167, 123, 79, 0.16) 1px, transparent 1.2px);
+  background-size: 14px 14px;
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] .faq-plus {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
