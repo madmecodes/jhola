@@ -1,6 +1,7 @@
 """WhatsApp channel adapter (AWS End User Messaging Social).
 
 Inbound: SNS notification -> whatsAppWebhookEntry (Meta webhook entry JSON) -> messages[].
+Text, parchi photos (media via S3) and voice notes (Amazon Transcribe, hi-IN / en-IN) are handled.
 Outbound: socialmessaging SendWhatsAppMessage with raw Meta message JSON.
 
 DEMO FEATURE (persona switch): one real phone can act as any household member, so the whole
@@ -72,6 +73,16 @@ def format_text(text: str) -> str:
     return t[:MAX_TEXT] or "..."
 
 
+def spoken_summary(text: str, limit: int = 300) -> str:
+    """Reply text -> a short line to speak: drop item lists and markup, keep the first sentences."""
+    lines = [l.strip() for l in format_text(text).replace("*", "").splitlines()]
+    prose = " ".join(l for l in lines if l and not l.startswith("-"))
+    if len(prose) <= limit:
+        return prose or "Aapka order process ho gaya hai."
+    cut = prose[:limit]
+    return cut[: max(cut.rfind(". "), cut.rfind("? "), 80) + 1].strip()
+
+
 def text_payload(to: str, body: str) -> dict:
     return {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text",
             "text": {"preview_url": False, "body": format_text(body)}}
@@ -104,7 +115,7 @@ def outbound_payloads(to: str, text: str, buttons: list[dict] | None) -> list[di
 class Inbound:
     wamid: str
     phone: str
-    kind: str  # text | image | button | unsupported
+    kind: str  # text | image | audio | button | unsupported
     text: str | None = None
     media_id: str | None = None
     media_type: str | None = None
@@ -140,6 +151,9 @@ def parse_message(m: dict) -> Inbound:
         img = m.get("image", {})
         return Inbound(kind="image", text=img.get("caption"), media_id=img.get("id"),
                        media_type=img.get("mime_type", "image/jpeg"), **base)
+    if t == "audio":  # voice notes: audio/ogg; codecs=opus
+        a = m.get("audio", {})
+        return Inbound(kind="audio", media_id=a.get("id"), media_type=a.get("mime_type", "audio/ogg"), **base)
     if t == "interactive":
         it = m.get("interactive", {})
         rep = it.get("button_reply") or it.get("list_reply") or {}
@@ -155,6 +169,46 @@ class Transport(Protocol):
     def send(self, payload: dict) -> str | None: ...
     def mark_read(self, wamid: str) -> None: ...
     def fetch_media(self, media_id: str) -> tuple[bytes, str | None]: ...
+    def transcribe(self, media_id: str) -> tuple[str, str | None]: ...
+
+
+def media_format(mime: str | None) -> str:
+    """WhatsApp audio mime type -> Transcribe MediaFormat."""
+    m = (mime or "audio/ogg").split(";")[0].strip().lower()
+    return {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "mp4", "audio/aac": "mp4",
+            "audio/amr": "amr", "audio/wav": "wav", "audio/webm": "webm"}.get(m, "ogg")
+
+
+def transcribe_s3(bucket: str, key: str, fmt: str = "ogg", timeout_s: float = 45.0) -> tuple[str, str | None]:
+    """Batch Amazon Transcribe job on an S3 object with language id limited to Hindi / Indian English."""
+    import time
+    import uuid
+
+    import boto3
+
+    tr = boto3.client("transcribe")
+    s3 = boto3.client("s3")
+    name = f"jhola-{uuid.uuid4().hex[:16]}"
+    tr.start_transcription_job(
+        TranscriptionJobName=name, Media={"MediaFileUri": f"s3://{bucket}/{key}"},
+        MediaFormat=fmt,
+        IdentifyLanguage=True, LanguageOptions=["hi-IN", "en-IN"],
+        OutputBucketName=bucket, OutputKey=f"transcripts/{name}.json",
+    )
+    deadline = time.time() + timeout_s
+    while True:
+        job = tr.get_transcription_job(TranscriptionJobName=name)["TranscriptionJob"]
+        st = job["TranscriptionJobStatus"]
+        if st == "COMPLETED":
+            break
+        if st == "FAILED":
+            raise RuntimeError(f"transcription failed: {job.get('FailureReason')}")
+        if time.time() > deadline:
+            raise TimeoutError("transcription timed out")
+        time.sleep(1)
+    out = json.loads(s3.get_object(Bucket=bucket, Key=f"transcripts/{name}.json")["Body"].read())
+    text = " ".join(t["transcript"] for t in out["results"]["transcripts"]).strip()
+    return text, job.get("LanguageCode")
 
 
 class Dedupe(Protocol):
@@ -173,7 +227,7 @@ class AwsTransport:
         self.s3 = boto3.client("s3", region_name=region)
 
     def send(self, payload: dict) -> str | None:
-        resp = self.sm.send_whats_app_message(
+        resp = self.sm.send_whatsapp_message(
             originationPhoneNumberId=self.phone_number_id, metaApiVersion=META_API_VERSION,
             message=json.dumps(payload, ensure_ascii=False).encode(),
         )
@@ -184,14 +238,44 @@ class AwsTransport:
         self.send({"messaging_product": "whatsapp", "status": "read", "message_id": wamid,
                    "typing_indicator": {"type": "text"}})
 
-    def fetch_media(self, media_id: str) -> tuple[bytes, str | None]:
-        key = f"inbound/{media_id}"
-        resp = self.sm.get_whats_app_message_media(
+    def media_to_s3(self, media_id: str) -> tuple[str, str | None]:
+        """Pull inbound media from WhatsApp into the media bucket; returns (key, mime type)."""
+        # The service treats "key" as a prefix and writes <prefix><mediaId>.<ext>, so list it back.
+        prefix = f"inbound/{media_id}/"
+        resp = self.sm.get_whatsapp_message_media(
             mediaId=media_id, originationPhoneNumberId=self.phone_number_id,
-            destinationS3File={"bucketName": self.bucket, "key": key},
+            destinationS3File={"bucketName": self.bucket, "key": prefix},
         )
-        body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
-        return body, resp.get("mimeType")
+        objs = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix).get("Contents", [])
+        if not objs:
+            raise RuntimeError(f"media {media_id} not found in s3://{self.bucket}/{prefix}")
+        return objs[0]["Key"], resp.get("mimeType")
+
+    def fetch_media(self, media_id: str) -> tuple[bytes, str | None]:
+        key, mime = self.media_to_s3(media_id)
+        return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read(), mime
+
+    def send_voice(self, to: str, text: str) -> str | None:
+        """Short spoken reply: Polly Kajal (neural, hi-IN) -> ogg/opus -> WhatsApp media -> audio message."""
+        import uuid
+
+        import boto3
+
+        audio = boto3.client("polly").synthesize_speech(
+            Engine="neural", VoiceId="Kajal", LanguageCode="hi-IN", OutputFormat="ogg_opus", Text=text,
+        )["AudioStream"].read()
+        key = f"outbound/{uuid.uuid4().hex}.ogg"
+        self.s3.put_object(Bucket=self.bucket, Key=key, Body=audio, ContentType="audio/ogg")
+        media_id = self.sm.post_whatsapp_message_media(
+            originationPhoneNumberId=self.phone_number_id, sourceS3File={"bucketName": self.bucket, "key": key},
+        )["mediaId"]
+        return self.send({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                          "type": "audio", "audio": {"id": media_id}})
+
+    def transcribe(self, media_id: str) -> tuple[str, str | None]:
+        """Voice note -> (transcript, language code) with Amazon Transcribe (hi-IN / en-IN)."""
+        key, mime = self.media_to_s3(media_id)
+        return transcribe_s3(self.bucket, key, media_format(mime))
 
 
 class DynamoDedupe:
@@ -269,6 +353,17 @@ class WhatsAppChannel:
         for d in targets:
             self._send(d, f"[Demo: message for {label}]\n{n.text}", n.buttons)
 
+    def _voice_reply(self, to: str, text: str) -> None:
+        """Optional spoken summary after a voice note (JHOLA_VOICE_REPLY=1)."""
+        if os.environ.get("JHOLA_VOICE_REPLY") != "1" or not hasattr(self.t, "send_voice"):
+            return
+        try:
+            mid = self.t.send_voice(to, spoken_summary(text))
+            self.sent.append({"to": to, "type": "audio", "message_id": mid})
+            log.info("whatsapp_sent", extra={"to": to, "type": "audio", "message_id": mid})
+        except Exception as e:  # noqa: BLE001
+            log.error("voice_reply_failed", extra={"to": to, "error": str(e)})
+
     def _deliver(self, sender: str, reply) -> None:
         self._send(sender, reply.text, reply.buttons)
         for n in reply.notifications:
@@ -340,6 +435,18 @@ class WhatsAppChannel:
                 reply = agent.handle_button(msg.phone, msg.button_id)
             else:
                 reply = agent.handle_button(member.phone, msg.button_id)
+        elif msg.kind == "audio":
+            text, lang = self.t.transcribe(msg.media_id)
+            agent.app.audit.log("voice_transcribed", actor=member.id, transcript=text, language=lang,
+                                media_type=msg.media_type)
+            log.info("voice_transcribed", extra={"wamid": msg.wamid, "language": lang, "chars": len(text)})
+            if not text:
+                self._send(msg.phone, "Voice note samajh nahi aaya. Ek baar phir boliye ya type karke bhejiye.")
+                return
+            reply = agent.handle_message(member.phone, f"(voice note) {text}")
+            self._deliver(msg.phone, reply)
+            self._voice_reply(msg.phone, reply.text)
+            return
         elif msg.kind in ("text", "image"):
             image = media_type = None
             if msg.kind == "image":
@@ -347,7 +454,7 @@ class WhatsAppChannel:
                 media_type = (media_type or msg.media_type or "image/jpeg").split(";")[0]
             reply = agent.handle_message(member.phone, msg.text, image, media_type)
         else:
-            self._send(msg.phone, "Abhi main text aur parchi photo hi samajh paata hoon. Please type karke bhejiye.")
+            self._send(msg.phone, "Abhi main text, voice note aur parchi photo samajh paata hoon.")
             return
         self._deliver(msg.phone, reply)
 

@@ -35,6 +35,9 @@ class FakeTransport:
     def fetch_media(self, media_id):
         return b"img", "image/jpeg"
 
+    def transcribe(self, media_id):
+        return "do packet doodh aur ek kilo atta", "hi-IN"
+
 
 class FakeAgent:
     def __init__(self, app):
@@ -143,3 +146,25 @@ def test_session_history_persists_in_repo():
     a._save_session("+91x", msgs)
     assert a._load_session("+91x") == [{"role": "user", "content": [{"text": "atta"}]},
                                        {"role": "assistant", "content": [{"text": "ok"}]}]
+
+
+def test_voice_note_is_transcribed_and_audited():
+    ch, agent, t, repo = make()
+    audio = {"from": "919999900001", "id": "w9", "type": "audio",
+             "audio": {"id": "m9", "mime_type": "audio/ogg; codecs=opus", "voice": True}}
+    ch.handle(parse_sns_event(sns(audio))[0])
+    assert agent.calls[-1][:3] == ("msg", OWNER, "(voice note) do packet doodh aur ek kilo atta")
+    ev = [e for e in agent.app.audit.events() if e["event"] == "voice_transcribed"][0]
+    assert ev["data"]["language"] == "hi-IN" and "doodh" in ev["data"]["transcript"]
+
+
+def test_media_format():
+    from jhola.whatsapp import media_format
+    assert media_format("audio/ogg; codecs=opus") == "ogg"
+    assert media_format("audio/mpeg") == "mp3"
+
+
+def test_spoken_summary_drops_lists():
+    from jhola.whatsapp import spoken_summary
+    s = spoken_summary("Order ready.\n- Atta x1\n- Doodh x2\n*Total: Rs 342*. Paid.")
+    assert s == "Order ready. Total: Rs 342. Paid."
