@@ -13,11 +13,11 @@ Parameters:
   AdminPhone:
     Type: String
     Default: "+916307178243"
-    Description: Household admin (Mom) WhatsApp number
+    Description: Phone that plays Mom, the admin of the seeded demo household (demo-gupta)
   DemoPhones:
     Type: String
     Default: "+916307178243"
-    Description: Comma-separated phones allowed to use the demo persona commands (/as, /whoami, /reset)
+    Description: Comma-separated phones flagged demo=true in the directory (persona commands /as, /whoami, /reset)
   BedrockRoleArn:
     Type: String
     Default: arn:aws:iam::590183982967:role/jhola-bedrock-invoker
@@ -216,6 +216,7 @@ Resources:
           JHOLA_MODEL_ID: !Ref ModelId
           JHOLA_STATE_PATH: /tmp/jhola.json
           JHOLA_VOICE_REPLY: "1"
+          JHOLA_THINKING: "off"
       Events:
         WhatsAppEvents:
           Type: SNS
@@ -270,6 +271,7 @@ Resources:
           JHOLA_BEDROCK_REGION: !Ref BedrockRegion
           JHOLA_MODEL_ID: !Ref ModelId
           JHOLA_STATE_PATH: /tmp/jhola.json
+          JHOLA_THINKING: "off"
           JHOLA_DEMO_KEY_PARAM: !Ref DemoKeyParameter
           JHOLA_RATE_READ: "120"
           JHOLA_RATE_WRITE: "20"
