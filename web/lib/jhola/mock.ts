@@ -448,6 +448,20 @@ export async function mockChat(req: ChatRequest): Promise<ChatResponse> {
   const member = MEMBERS.find((m) => m.key === req.member) ?? MEMBERS[0];
   const text = (req.text ?? "").trim();
 
+  const btn = req.button_id?.match(/^(approve|reject):(.+)$/);
+  if (btn) {
+    try {
+      const o = await mockDecide(btn[2], btn[1] as "approve" | "reject");
+      return {
+        reply_text: o.status === "rejected" ? `${o.order_id} reject kar diya.` : `${o.order_id} approve ho gaya. ${rs(o.paid_inr)} paid, UPI ref ${o.upi_ref}.`,
+        order: o,
+        notifications: [{ to: o.member_name, text: o.status === "rejected" ? `Mom ne ${o.order_id} reject kar diya.` : `Mom ne approve kar diya. ${rs(o.paid_inr)} paid.` }],
+      };
+    } catch (e) {
+      return { reply_text: e instanceof Error ? e.message : "Could not do that." };
+    }
+  }
+
   if (member.key === "mom" && /^(approve|reject)\b/i.test(text)) {
     const pending = st.orders.find((o) => o.status === "pending_approval");
     if (!pending) return { reply_text: "Koi order approval ke liye pending nahi hai." };
@@ -476,11 +490,17 @@ export async function mockChat(req: ChatRequest): Promise<ChatResponse> {
 
   return {
     reply_text: parts.join("\n"),
-    buttons:
-      order.status === "pending_approval"
+    notifications:
+      order.status === "pending_approval" && member.key !== "mom"
         ? [
-            { id: `approve:${order.order_id}`, title: "Approve" },
-            { id: `reject:${order.order_id}`, title: "Reject" },
+            {
+              to: "Mom",
+              text: `${member.name} wants to order ${allowed.length} items for ${rs(allowed.reduce((a, i) => a + i.price_inr * i.qty, 0))}. Approve?`,
+              buttons: [
+                { id: `approve:${order.order_id}`, title: "Approve" },
+                { id: `reject:${order.order_id}`, title: "Reject" },
+              ],
+            },
           ]
         : undefined,
     order: clone(order),

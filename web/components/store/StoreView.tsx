@@ -198,6 +198,7 @@ function JholaPanel({
   onParchi,
   parchiBusy,
   error,
+  thinking,
 }: {
   member: (typeof MEMBERS)[number];
   setMember: (m: ChatMember) => void;
@@ -209,6 +210,7 @@ function JholaPanel({
   onParchi: (f: File) => void;
   parchiBusy: boolean;
   error: string | null;
+  thinking: string | null;
 }) {
   const allowedTotal = lines.filter((l) => l.check.decision === "allow").reduce((s, l) => s + l.p.price_inr * l.qty, 0);
   const pay = checkPayment(member.role, allowedTotal, {
@@ -353,10 +355,20 @@ function JholaPanel({
         </p>
       ) : null}
 
+      {(checkingOut || parchiBusy) && thinking ? (
+        <p role="status" className="rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink-soft">
+          Jhola is thinking. {thinking}
+        </p>
+      ) : null}
       {result ? (
         <div className="rounded-xl border border-line bg-paper p-3 text-sm" aria-live="polite">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-jute">Jhola replied</p>
           <p className="mt-1 whitespace-pre-wrap">{result.reply_text}</p>
+          {(result.notifications ?? []).map((n, i) => (
+            <p key={i} className="mt-2 rounded-lg bg-turmeric-soft px-2 py-1 text-xs">
+              [Sent to {String(n.to ?? n.member ?? "family")}] {String(n.text ?? n.reply_text ?? "")}
+            </p>
+          ))}
           {result.order ? (
             <p className="mt-2 text-xs text-ink-soft">
               Order <span className="font-mono text-ink">{result.order.order_id}</span> is{" "}
@@ -414,6 +426,8 @@ export default function StoreView() {
   const [parchiBusy, setParchiBusy] = useState(false);
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [thinking, setThinking] = useState<string | null>(null);
+  const [sessionId] = useState(() => `web-store-${Math.random().toString(36).slice(2, 8)}`);
 
   const member = MEMBERS.find((m) => m.id === memberId)!;
   const household = usePolling(() => api.household(), 10000);
@@ -462,14 +476,17 @@ export default function StoreView() {
           amazon_search_url: l.p.amazon_search_url,
           qty: l.qty,
         })),
+        (t) => setThinking(t),
+        `${sessionId}-${memberId}`,
       );
       setResult(res);
-      if (res.order && res.order.status !== "denied") setCart({});
+      if (res.order && res.order.status !== "denied" && res.order.status !== "draft") setCart({});
       household.refresh();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setCheckingOut(false);
+      setThinking(null);
     }
   }
 
@@ -479,12 +496,13 @@ export default function StoreView() {
     setResult(null);
     try {
       const b64 = await fileToBase64(f);
-      setResult(await api.chat({ member: memberId, image_base64: b64, media_type: "image/jpeg" }));
+      setResult(await api.chat({ member: memberId, session_id: `${sessionId}-${memberId}`, image_base64: b64, media_type: "image/jpeg" }, (t) => setThinking(t)));
       household.refresh();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setParchiBusy(false);
+      setThinking(null);
     }
   }
 
@@ -500,6 +518,7 @@ export default function StoreView() {
       onParchi={sendParchi}
       parchiBusy={parchiBusy}
       error={error}
+      thinking={thinking}
     />
   );
   const denied = lines.filter((l) => l.check.decision === "deny").length;

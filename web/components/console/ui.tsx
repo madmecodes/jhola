@@ -62,6 +62,7 @@ const STATUS: Record<OrderStatus, { label: string; cls: string }> = {
   pending_approval: { label: "Needs approval", cls: "bg-turmeric-soft text-[#7a5500] border-turmeric/50" },
   denied: { label: "Denied", cls: "bg-terracotta-soft text-terracotta border-terracotta/30" },
   rejected: { label: "Rejected", cls: "bg-terracotta-soft text-terracotta border-terracotta/30" },
+  draft: { label: "Draft", cls: "bg-sand text-ink-soft border-line" },
 };
 
 export function StatusChip({ status }: { status: OrderStatus | string }) {
@@ -74,16 +75,21 @@ export function StatusChip({ status }: { status: OrderStatus | string }) {
 }
 
 export function DecisionChip({ decision }: { decision: string }) {
-  const allow = decision === "allow";
+  const d = decision === "allow" || decision === "deny" ? decision : "pending";
+  const cls = { allow: "bg-leaf-soft text-leaf", deny: "bg-terracotta-soft text-terracotta", pending: "bg-sand text-ink-soft" }[d];
   return (
-    <span
-      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
-        allow ? "bg-leaf-soft text-leaf" : "bg-terracotta-soft text-terracotta"
-      }`}
-    >
-      {allow ? "Allow" : "Deny"}
+    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${cls}`}>
+      {d === "allow" ? "Allow" : d === "deny" ? "Deny" : "Pending"}
     </span>
   );
+}
+
+export function formatPeriod(m: { period?: string; month?: string }) {
+  if (m.month && /^\d{4}-\d{2}$/.test(m.month)) {
+    const [y, mo] = m.month.split("-").map(Number);
+    return new Date(y, mo - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+  }
+  return m.period ?? "";
 }
 
 export function PolicyChip({ id }: { id: string }) {

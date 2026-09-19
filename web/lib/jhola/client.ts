@@ -74,6 +74,10 @@ async function request<T>(path: string, init: RequestInit & { adminKey?: string 
   } catch {
     body = text;
   }
+  if (res.status === 429) {
+    setConn("up");
+    throw new ApiError("Jhola is getting a lot of requests right now. Wait a few seconds and try again.", 429);
+  }
   if (!res.ok) {
     if (res.status >= 500 || res.status === 404) setConn(res.status >= 500 ? "down" : "up");
     else setConn("up");
@@ -85,6 +89,36 @@ async function request<T>(path: string, init: RequestInit & { adminKey?: string 
   }
   setConn("up");
   return body as T;
+}
+
+type Rec = Record<string, unknown>;
+const isRec = (v: unknown): v is Rec => !!v && typeof v === "object" && !Array.isArray(v);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Long-running endpoints (chat, rules draft, refill) may answer 202 {pending, job_id, reply_text}.
+// Poll GET /api/jobs/{job_id} every 2s until it is done; onPending receives the interim reply.
+async function requestJob<T>(path: string, init: RequestInit & { adminKey?: string }, onPending?: (text: string) => void): Promise<T> {
+  const first = await request<unknown>(path, init);
+  if (!isRec(first) || !first.pending || typeof first.job_id !== "string") return first as T;
+  onPending?.(typeof first.reply_text === "string" ? first.reply_text : "Jhola is thinking...");
+  const started = Date.now();
+  while (Date.now() - started < 4 * 60_000) {
+    await sleep(2000);
+    let job: unknown;
+    try {
+      job = await request<unknown>(`/api/jobs/${encodeURIComponent(first.job_id)}`);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 429 || e.status === 0 || e.status >= 500)) continue;
+      throw e;
+    }
+    if (!isRec(job)) continue;
+    const status = String(job.status ?? "");
+    if (status === "done" || status === "completed" || status === "succeeded") return (job.result ?? job) as T;
+    if (status === "error" || status === "failed") throw new ApiError(String(job.error ?? "Jhola could not finish this request."), 500);
+    if (!job.pending && !status && job.result) return job.result as T;
+    if (typeof job.reply_text === "string") onPending?.(job.reply_text);
+  }
+  throw new ApiError("Jhola is taking too long. Check the Overview page in a minute.", 504);
 }
 
 function guard(adminKey: string | undefined) {
@@ -117,18 +151,18 @@ export const api = {
       ? request(`/api/approvals/${encodeURIComponent(orderId)}`, { method: "POST", body: JSON.stringify({ decision }), adminKey })
       : mock.mockDecide(orderId, decision);
   },
-  chat(req: ChatRequest): Promise<ChatResponse> {
-    return IS_LIVE ? request("/api/chat", { method: "POST", body: JSON.stringify(req) }) : mock.mockChat(req);
+  chat(req: ChatRequest, onPending?: (text: string) => void): Promise<ChatResponse> {
+    return IS_LIVE ? requestJob("/api/chat", { method: "POST", body: JSON.stringify(req) }, onPending) : mock.mockChat(req);
   },
   // Storefront checkout. Live: the cart is sent to the agent as a plain order message, so it goes
   // through the same resolve -> Cedar -> payment path as WhatsApp. Mock: evaluated in the browser.
-  checkoutCart(member: ChatMember, cart: mock.CartLine[]): Promise<ChatResponse> {
+  checkoutCart(member: ChatMember, cart: mock.CartLine[], onPending?: (text: string) => void, sessionId?: string): Promise<ChatResponse> {
     if (!IS_LIVE) return mock.mockCartOrder(member, cart);
     const text = cart.map((c) => `${c.qty} x ${c.brand} ${c.name} ${c.size}`).join(", ");
-    return request("/api/chat", { method: "POST", body: JSON.stringify({ member, text: `Order: ${text}` }) });
+    return requestJob("/api/chat", { method: "POST", body: JSON.stringify({ member, text: `Order: ${text}`, session_id: sessionId }) }, onPending);
   },
-  draftRule(text: string): Promise<RuleDraft> {
-    return IS_LIVE ? request("/api/rules/draft", { method: "POST", body: JSON.stringify({ text }) }) : mock.mockDraftRule(text);
+  draftRule(text: string, onPending?: (text: string) => void): Promise<RuleDraft> {
+    return IS_LIVE ? requestJob("/api/rules/draft", { method: "POST", body: JSON.stringify({ text }) }, onPending) : mock.mockDraftRule(text);
   },
   activateRule(cedar: string, title: string, adminKey?: string): Promise<{ ok: boolean; rule: Rule }> {
     guard(adminKey);
@@ -145,7 +179,7 @@ export const api = {
   },
   refill(adminKey?: string): Promise<unknown> {
     guard(adminKey);
-    return IS_LIVE ? request("/api/refill/run", { method: "POST", adminKey }) : mock.mockRefill();
+    return IS_LIVE ? requestJob("/api/refill/run", { method: "POST", adminKey }) : mock.mockRefill();
   },
   reset(adminKey?: string): Promise<unknown> {
     guard(adminKey);

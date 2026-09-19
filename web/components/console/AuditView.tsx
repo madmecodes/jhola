@@ -119,6 +119,8 @@ export default function AuditView() {
   const orderId = params.get("order") ?? "";
   const [orderInput, setOrderInput] = useState(orderId);
   const [type, setType] = useState("all");
+  const [newestFirst, setNewestFirst] = useState<boolean | null>(null);
+  const newest = newestFirst ?? !orderId;
 
   const audit = usePolling(() => api.audit(orderId || undefined, 100), 5000, [orderId]);
 
@@ -128,8 +130,8 @@ export default function AuditView() {
       (audit.data?.events ?? [])
         .filter((e) => type === "all" || e.type === type)
         .slice()
-        .sort((a, b) => (orderId ? a.ts.localeCompare(b.ts) : b.ts.localeCompare(a.ts))),
-    [audit.data, type, orderId],
+        .sort((a, b) => (newest ? b.ts.localeCompare(a.ts) : a.ts.localeCompare(b.ts))),
+    [audit.data, type, newest],
   );
 
   return (
@@ -197,11 +199,24 @@ export default function AuditView() {
         </div>
       </form>
 
-      {orderId ? (
-        <p className="mb-4 text-sm text-ink-soft">
-          Showing order <span className="font-mono font-semibold text-ink">{orderId}</span> in the order it happened.
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-ink-soft">
+        <p>
+          {orderId ? (
+            <>
+              Showing order <span className="font-mono font-semibold text-ink">{orderId}</span>.
+            </>
+          ) : (
+            "All recent events."
+          )}
         </p>
-      ) : null}
+        <button
+          type="button"
+          onClick={() => setNewestFirst(!newest)}
+          className="rounded-full border border-ink/20 bg-paper px-3 py-1 text-xs font-semibold text-ink hover:border-ink/50"
+        >
+          {newest ? "Newest first" : "Oldest first"} <span className="sr-only">(change order)</span>
+        </button>
+      </div>
 
       {audit.loading ? (
         <SkeletonList rows={6} className="h-20" />

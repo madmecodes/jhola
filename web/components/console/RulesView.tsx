@@ -22,6 +22,7 @@ function Composer({ onActivated }: { onActivated: () => void }) {
   const [activating, setActivating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [thinking, setThinking] = useState<string | null>(null);
 
   async function doDraft() {
     if (!text.trim()) return;
@@ -30,11 +31,13 @@ function Composer({ onActivated }: { onActivated: () => void }) {
     setDone(null);
     setDraft(null);
     try {
-      setDraft(await api.draftRule(text.trim()));
+      setThinking(null);
+      setDraft(await api.draftRule(text.trim(), (t) => setThinking(t)));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setDrafting(false);
+      setThinking(null);
     }
   }
 
@@ -106,7 +109,14 @@ function Composer({ onActivated }: { onActivated: () => void }) {
           {done}
         </p>
       ) : null}
-      {drafting ? <div className="mt-4"><SkeletonList rows={2} className="h-24" /></div> : null}
+      {drafting ? (
+        <div className="mt-4 space-y-2">
+          <p role="status" className="text-sm text-ink-soft">
+            {thinking ? `Jhola is thinking. ${thinking}` : "Drafting the Cedar policy and running the auto-tests..."}
+          </p>
+          <SkeletonList rows={2} className="h-24" />
+        </div>
+      ) : null}
 
       {draft ? (
         <div className="mt-5 space-y-4" aria-live="polite">
@@ -196,7 +206,7 @@ export default function RulesView() {
   const household = usePolling(() => api.household(), 15000);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const rules = household.data?.rules ?? [];
+  const rules = (household.data?.rules ?? []).filter((r) => r.active !== false);
 
   async function remove(id: string, key: string) {
     if (!window.confirm(`Remove rule ${id}?`)) return;

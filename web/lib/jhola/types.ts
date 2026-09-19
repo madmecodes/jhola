@@ -5,6 +5,7 @@ export type Role = "admin" | "adult" | "house_help" | "teen" | string;
 export type Member = {
   id: string;
   name: string;
+  display?: string;
   role: Role;
   phone_masked: string;
   limits_summary: string;
@@ -16,6 +17,7 @@ export type Rule = {
   title_hinglish: string;
   cedar: string;
   source: "base" | "custom";
+  active?: boolean;
 };
 
 export type Mandate = {
@@ -23,6 +25,9 @@ export type Mandate = {
   used_inr: number;
   remaining_inr: number;
   period: string;
+  month?: string;
+  approval_threshold_inr?: number;
+  house_help_daily_cap_inr?: number;
 };
 
 export type HouseholdResponse = {
@@ -32,7 +37,7 @@ export type HouseholdResponse = {
   mandate: Mandate;
 };
 
-export type OrderStatus = "paid" | "pending_approval" | "denied" | "partially_paid" | "rejected";
+export type OrderStatus = "paid" | "pending_approval" | "denied" | "partially_paid" | "rejected" | "draft";
 
 export type OrderItem = {
   sku: string;
@@ -40,9 +45,12 @@ export type OrderItem = {
   brand: string;
   qty: number;
   price_inr: number;
-  decision: "allow" | "deny";
+  decision: "allow" | "deny" | "pending";
   policy_ids: string[];
   reason: string;
+  reason_hinglish?: string;
+  category?: string;
+  line_total_inr?: number;
   amazon_search_url?: string;
   fulfilment?: string;
 };
@@ -82,6 +90,8 @@ export type ChatMember = "didi" | "teen" | "dad" | "mom";
 
 export type ChatRequest = {
   member: ChatMember;
+  session_id?: string;
+  button_id?: string;
   text?: string;
   image_base64?: string;
   media_type?: string;
@@ -89,8 +99,12 @@ export type ChatRequest = {
 
 export type ChatButton = { id: string; title: string };
 
+export type ChatNotification = { to?: string; member?: string; text?: string; reply_text?: string; buttons?: ChatButton[] } & Record<string, unknown>;
+
 export type ChatResponse = {
   reply_text: string;
+  notifications?: ChatNotification[];
+  member?: string;
   buttons?: ChatButton[];
   order?: Order;
   decisions?: unknown;

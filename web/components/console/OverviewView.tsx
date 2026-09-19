@@ -7,7 +7,7 @@ import { usePolling } from "@/lib/jhola/hooks";
 import type { Mandate, Member } from "@/lib/jhola/types";
 import { Guarded } from "./AdminKey";
 import OrderCard from "./OrderCard";
-import { Button, Card, EmptyState, ErrorState, PageHeader, SectionTitle, Skeleton, SkeletonList, rs, timeAgo } from "./ui";
+import { Button, Card, EmptyState, ErrorState, PageHeader, SectionTitle, Skeleton, SkeletonList, formatPeriod, rs, timeAgo } from "./ui";
 
 const ROLE_LABEL: Record<string, string> = { admin: "Admin", adult: "Adult", house_help: "House help", teen: "Teen" };
 const ROLE_TONE: Record<string, string> = {
@@ -36,7 +36,7 @@ function MandateMeter({ m }: { m: Mandate }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-jute">UPI AutoPay mandate</p>
           <p className="mt-1 font-display text-3xl font-semibold tabular-nums">{rs(m.remaining_inr)}</p>
-          <p className="text-sm text-ink-soft">left this {m.period ? `period (${m.period})` : "month"}</p>
+          <p className="text-sm text-ink-soft">left this month{formatPeriod(m) ? ` (${formatPeriod(m)})` : ""}</p>
         </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
           <dt className="text-ink-soft">Cap</dt>
@@ -72,6 +72,7 @@ function MemberCard({ m }: { m: Member }) {
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 font-semibold">
           {m.name}
+          {m.display && !m.name.includes(m.display) ? <span className="font-normal text-ink-soft">({m.display})</span> : null}
           <span className="rounded-full bg-sand px-2 py-0.5 text-[11px] font-semibold text-ink-soft">{ROLE_LABEL[m.role] ?? m.role}</span>
         </p>
         <p className="text-xs text-ink-soft">{m.phone_masked}</p>

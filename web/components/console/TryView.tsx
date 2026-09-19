@@ -4,9 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ImagePlus, SendHorizontal, X } from "lucide-react";
 import Logo from "@/components/Logo";
 import { api, errorMessage } from "@/lib/jhola/client";
-import { useAdminKey } from "@/lib/jhola/hooks";
 import type { ChatButton, ChatMember, Order } from "@/lib/jhola/types";
-import { NEED_KEY } from "./AdminKey";
 import { DecisionChip, PageHeader, PolicyChip, StatusChip, rs } from "./ui";
 
 const MEMBERS: { id: ChatMember; label: string; sub: string; initials: string; tone: string }[] = [
@@ -32,8 +30,20 @@ type Msg = {
   buttons?: ChatButton[];
   order?: Order;
   error?: boolean;
+  system?: boolean;
+  owner?: ChatMember;
   at: string;
 };
+
+function memberFrom(v: unknown): ChatMember | null {
+  const t = String(v ?? "").toLowerCase();
+  if (/mom|sunita|admin/.test(t)) return "mom";
+  if (/dad|rajesh/.test(t)) return "dad";
+  if (/didi|kamla|house/.test(t)) return "didi";
+  if (/teen|aarav/.test(t)) return "teen";
+  return null;
+}
+const LABEL: Record<ChatMember, string> = { mom: "Mom", dad: "Dad", didi: "Didi", teen: "Teen" };
 
 let msgId = 0;
 const now = () => new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
@@ -94,7 +104,11 @@ export default function TryView() {
   const [text, setText] = useState("");
   const [image, setImage] = useState<{ base64: string; dataUrl: string } | null>(null);
   const [sending, setSending] = useState(false);
-  const adminKey = useAdminKey();
+  const [thinking, setThinking] = useState<string | null>(null);
+  const [sessions] = useState<Record<ChatMember, string>>(() => {
+    const r = Math.random().toString(36).slice(2, 8);
+    return { mom: `web-mom-${r}`, dad: `web-dad-${r}`, didi: `web-didi-${r}`, teen: `web-teen-${r}` };
+  });
   const scroller = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -108,50 +122,45 @@ export default function TryView() {
   const push = (who: ChatMember, msg: Omit<Msg, "id" | "at">) =>
     setThreads((t) => ({ ...t, [who]: [...t[who], { ...msg, id: ++msgId, at: now() }] }));
 
-  async function send(who: ChatMember, body: string, img: typeof image) {
-    if (!body.trim() && !img) return;
+  async function send(who: ChatMember, body: string, img: typeof image, buttonId?: string) {
+    if (!body.trim() && !img && !buttonId) return;
     push(who, { from: "me", text: body.trim() || undefined, image: img?.dataUrl });
     setText("");
     setImage(null);
     setSending(true);
+    setThinking(null);
     try {
-      const res = await api.chat({
-        member: who,
-        text: body.trim() || undefined,
-        image_base64: img?.base64,
-        media_type: img ? "image/jpeg" : undefined,
-      });
+      const res = await api.chat(
+        {
+          member: who,
+          session_id: sessions[who],
+          text: body.trim() || undefined,
+          button_id: buttonId,
+          image_base64: img?.base64,
+          media_type: img ? "image/jpeg" : undefined,
+        },
+        (interim) => setThinking(interim),
+      );
       push(who, { from: "bot", text: res.reply_text, buttons: res.buttons, order: res.order });
+      for (const n of res.notifications ?? []) {
+        const to = memberFrom(n.to ?? n.member ?? n.member_id ?? n.recipient);
+        const body = String(n.text ?? n.reply_text ?? n.body ?? "");
+        const label = to ? LABEL[to] : String(n.to ?? n.member ?? "family");
+        push(who, { from: "bot", system: true, text: `[Sent to ${label}] ${body}` });
+        if (to && to !== who) push(to, { from: "bot", text: body, buttons: n.buttons, owner: to });
+      }
     } catch (e) {
       push(who, { from: "bot", text: errorMessage(e), error: true });
     } finally {
       setSending(false);
+      setThinking(null);
     }
   }
 
-  async function onButton(msg: Msg, b: ChatButton) {
-    const raw = `${b.id} ${b.title}`.toLowerCase();
-    const decision = raw.includes("approve") ? "approve" : raw.includes("reject") ? "reject" : null;
-    const orderId = (b.id.includes(":") ? b.id.split(":").pop() : undefined) || msg.order?.order_id;
-    if (decision && orderId) {
-      push(member, { from: "me", text: b.title });
-      setSending(true);
-      try {
-        const o = await api.decide(orderId, decision, adminKey);
-        push(member, {
-          from: "bot",
-          text: o.status === "rejected" ? `${o.order_id} rejected by Mom.` : `${o.order_id} approved. ${rs(o.paid_inr)} paid${o.upi_ref ? `, UPI ref ${o.upi_ref}` : ""}.`,
-          order: o,
-        });
-      } catch (e) {
-        push(member, { from: "bot", text: errorMessage(e), error: true });
-      } finally {
-        setSending(false);
-      }
-      setThreads((t) => ({ ...t, [member]: t[member].map((x) => (x.id === msg.id ? { ...x, buttons: undefined } : x)) }));
-      return;
-    }
-    send(member, b.title, null);
+  // Reply buttons (Approve / Reject and others) go back to the agent as button_id, like a WhatsApp tap.
+  function onButton(msg: Msg, b: ChatButton) {
+    setThreads((t) => ({ ...t, [member]: t[member].map((x) => (x.id === msg.id ? { ...x, buttons: undefined } : x)) }));
+    send(msg.owner ?? member, b.title, null, b.id);
   }
 
   return (
@@ -207,7 +216,11 @@ export default function TryView() {
                 </p>
               ) : null}
               {thread.map((msg) =>
-                msg.from === "me" ? (
+                msg.system ? (
+                  <p key={msg.id} className="mx-auto w-fit max-w-[92%] whitespace-pre-wrap rounded-lg bg-turmeric-soft/90 px-2.5 py-1 text-center text-[11.5px] text-ink shadow-sm">
+                    {msg.text}
+                  </p>
+                ) : msg.from === "me" ? (
                   <div key={msg.id} className="ml-auto w-fit max-w-[82%] rounded-xl rounded-tr-sm bg-chat-out px-2.5 py-1.5 shadow-sm">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     {msg.image ? <img src={msg.image} alt="Uploaded parchi" className="mb-1 max-h-56 rounded-lg" /> : null}
@@ -225,13 +238,11 @@ export default function TryView() {
                     {msg.buttons?.length ? (
                       <div className="-mx-2.5 mt-1 grid border-t border-line" style={{ gridTemplateColumns: `repeat(${Math.min(msg.buttons.length, 3)}, minmax(0, 1fr))` }}>
                         {msg.buttons.map((b) => {
-                          const guarded = /approve|reject/i.test(`${b.id} ${b.title}`);
-                          const disabled = sending || (guarded && !adminKey);
                           return (
-                            <span key={b.id} title={guarded && !adminKey ? NEED_KEY : undefined} className="border-line [&:not(:first-child)]:border-l">
+                            <span key={b.id} className="border-line [&:not(:first-child)]:border-l">
                               <button
                                 type="button"
-                                disabled={disabled}
+                                disabled={sending}
                                 onClick={() => onButton(msg, b)}
                                 className="w-full py-2 text-center text-sm font-semibold text-[#1f7aa8] hover:bg-cream disabled:cursor-not-allowed disabled:opacity-45"
                               >
@@ -246,7 +257,8 @@ export default function TryView() {
                 ),
               )}
               {sending ? (
-                <div className="mr-auto w-fit rounded-xl rounded-tl-sm bg-paper px-3 py-2 shadow-sm" role="status" aria-label="Jhola is typing">
+                <div className="mr-auto w-fit max-w-[88%] rounded-xl rounded-tl-sm bg-paper px-3 py-2 shadow-sm" role="status" aria-label="Jhola is thinking">
+                  {thinking ? <p className="mb-1 whitespace-pre-wrap text-[12.5px] text-ink-soft">Jhola is thinking. {thinking}</p> : null}
                   <span className="flex gap-1" aria-hidden>
                     {[0, 1, 2].map((i) => (
                       <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-soft" style={{ animationDelay: `${i * 120}ms` }} />
@@ -356,7 +368,7 @@ export default function TryView() {
               <li>Teen gets the geometry box, not the Red Bull.</li>
               <li>Dad&apos;s dinner is above Rs 1,000, so Mom has to approve.</li>
             </ul>
-            <p className="mt-2">Approvals need the admin key. Every order also appears on Overview and in the Audit trail.</p>
+            <p className="mt-2">Approval requests are sent to Mom: switch to Mom to tap Approve or Reject. Every order also appears on Overview and in the Audit trail.</p>
           </div>
         </aside>
       </div>
