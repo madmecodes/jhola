@@ -26,6 +26,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from collections import defaultdict
@@ -105,7 +106,7 @@ class Connection:
             await self.send_json({"type": "error", "message": "session already running"})
             return
         member = str(msg.get("member", "")).lower()
-        if member not in MEMBERS:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", member):
             await self.send_json({"type": "error", "message": f"member must be one of {', '.join(MEMBERS)}"})
             return
         voice = msg.get("voice") if msg.get("voice") in VOICES else "kiara"
@@ -115,6 +116,10 @@ class Connection:
                                       on_event=self.send_json, on_audio=self.send_audio,
                                       on_tool=self.on_tool, voice=voice)
             await self.sonic.start()
+        except ValueError as e:  # unknown member for this household
+            self.sonic = None
+            await self.send_json({"type": "error", "message": str(e)[:200]})
+            return
         except Exception as e:
             log.exception("session start failed")
             self.sonic = None

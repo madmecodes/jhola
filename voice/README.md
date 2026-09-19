@@ -17,7 +17,8 @@ jhola_voice.server     WebSocket session, origin check, per-IP limit, 5 min cap
 jhola_voice.sonic      Nova 2 Sonic bidirectional stream (sessionStart / promptStart / audioInput)
 jhola_voice.tools      search, details, compare, cart, check_cart (Cedar), checkout (submit_order)
    |
-jhola package (agent/) -> DynamoDB jhola-state (orders, mandate, txns, audit, voice_carts)
+jhola package (agent/) -> DynamoDB jhola-state, household partition hh#demo-gupta#
+                          (orders, mandate, txns, audit, voice_carts)
 ```
 
 ## Tools the model can call
@@ -32,7 +33,8 @@ jhola package (agent/) -> DynamoDB jhola-state (orders, mandate, txns, audit, vo
 | `checkout` | `Jhola.build_cart` + `Jhola.submit_order`: the real gate. Returns paid / pending_approval / denied |
 
 The acting member (mom / dad / didi / teen) comes from the client `start` message, never from the
-model. The model has no payment tool; payment only happens inside `submit_order` after a Cedar allow.
+model, and the household is the multi-tenant `demo-gupta` partition by default
+(`JHOLA_HOUSEHOLD_ID` picks another one), so every write lands where the console reads. The model has no payment tool; payment only happens inside `submit_order` after a Cedar allow.
 Seller descriptions that look like prompt injection are withheld from the model.
 
 ## Wire protocol
@@ -68,6 +70,7 @@ uv run python scripts/test_client.py ws://localhost:8080 dad /tmp/jhola-voice/as
 | `JHOLA_BEDROCK_PROFILE` | `default` | Local AWS profile for Bedrock when no role is set |
 | `JHOLA_BEDROCK_REGION` | `us-east-1` | Bedrock region |
 | `JHOLA_TABLE` | unset | DynamoDB state table (`jhola-state` on AWS) |
+| `JHOLA_HOUSEHOLD_ID` | `demo-gupta` | Household whose partition the session reads and writes |
 | `JHOLA_VOICE_ORIGINS` | vercel + localhost | Allowed browser origins |
 | `JHOLA_VOICE_MAX_SECONDS` | `300` | Session cap |
 | `JHOLA_VOICE_MAX_PER_IP` | `2` | Concurrent sessions per IP |

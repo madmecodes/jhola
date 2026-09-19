@@ -176,15 +176,19 @@ def _brief(p: dict, usual: set[str]) -> dict:
 class VoiceShop:
     """One voice session: the acting member, their cart and the tool implementations (synchronous)."""
 
-    def __init__(self, member_id: str, session_id: str, repo: Repository | None = None) -> None:
-        if member_id not in MEMBERS:
+    def __init__(self, member_id: str, session_id: str, repo: Repository | None = None,
+                 household_id: str | None = None) -> None:
+        self.app = Jhola(repo or repository(), Clock(),
+                         household_id=household_id or os.environ.get("JHOLA_HOUSEHOLD_ID") or None)
+        # the household's own partition (hh#<household_id>#...), the same one the console reads
+        self.repo = self.app.repo
+        member = self.app.hh.find(member_id)
+        if member is None:
             raise ValueError(f"unknown member {member_id}")
-        self.repo = repo or repository()
-        self.app = Jhola(self.repo, Clock())
-        self.member = self.app.hh.member(member_id)
+        self.member = member
         self.session_id = session_id
         self.cart: dict[str, int] = {}
-        self.usual = {p["sku"] for p in self.app.hh.preferences.values()}
+        self.usual = {p["sku"] for p in self.app.hh.preferences.values() if p.get("sku")}
         self.last_order: dict | None = None
 
     # ---------- helpers ----------
