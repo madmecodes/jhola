@@ -55,16 +55,26 @@ class Catalog:
             if category and it["category"] != category:
                 continue
             hay_tags = set(it["tags"])
+            aliases = it.get("aliases", [])
+            alias_words = {w for a in aliases for w in _norm(a).split()}
+            alias_phrases = {_norm(a) for a in aliases}
             hay = _norm(f"{it['brand']} {it['name']} {' '.join(it['tags'])}")
-            score = 0
+            hay_words = hay.split()
+            score = 3 if _norm(query) in alias_phrases else 0
             for w in words:
                 if w in hay_tags:
                     score += 3
-                elif w in hay.split():
+                elif w in alias_words:
+                    score += 2.5
+                elif w in hay_words:
                     score += 2
                 elif w in hay:
                     score += 1
             if score:
+                # A processed form (powder) the member did not ask for ranks below the fresh item:
+                # "kothmir" / "dhaniya" mean coriander leaves, "dhaniya powder" means the powder.
+                if "powder" in hay_tags and "powder" not in words:
+                    score -= 0.5
                 score += 0.5 if it["in_stock"] else 0
                 score += it["seller_rating"] / 10
                 scored.append((score, it))
