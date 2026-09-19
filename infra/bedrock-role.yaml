@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Jhola cross-account Bedrock access. Deployed in the Bedrock account (590183982967).
+  Trusts only the Jhola Lambda execution role in the infra account and allows only
+  Claude Sonnet 5 invocation via the global inference profile.
+
+Parameters:
+  LambdaRoleArn:
+    Type: String
+    Default: arn:aws:iam::446413909932:role/jhola-whatsapp-agent-role
+  InferenceProfileId:
+    Type: String
+    Default: global.anthropic.claude-sonnet-5
+  FoundationModelId:
+    Type: String
+    Default: anthropic.claude-sonnet-5
+
+Resources:
+  BedrockInvokerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: jhola-bedrock-invoker
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref LambdaRoleArn }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-claude-sonnet-5
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeViaInferenceProfile
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:Converse
+                  - bedrock:ConverseStream
+                Resource:
+                  - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/${InferenceProfileId}
+                  - !Sub arn:aws:bedrock:*::foundation-model/${FoundationModelId}
+                  - !Sub arn:aws:bedrock:::foundation-model/${FoundationModelId}
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt BedrockInvokerRole.Arn

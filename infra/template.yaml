@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Jhola WhatsApp agent (End User Messaging Social -> SNS -> Lambda -> Bedrock via cross-account role)
+
+Parameters:
+  WhatsAppTopicArn:
+    Type: String
+    Default: arn:aws:sns:ap-south-1:446413909932:jhola-whatsapp-events
+  PhoneNumberId:
+    Type: String
+    Default: phone-number-id-b154148aac4e47e1ada8a825a9f33f47
+    Description: End User Messaging Social origination phone number id
+  AdminPhone:
+    Type: String
+    Default: "+916307178243"
+    Description: Household admin (Mom) WhatsApp number
+  DemoPhones:
+    Type: String
+    Default: "+916307178243"
+    Description: Comma-separated phones allowed to use the demo persona commands (/as, /whoami, /reset)
+  BedrockRoleArn:
+    Type: String
+    Default: arn:aws:iam::590183982967:role/jhola-bedrock-invoker
+    Description: Cross-account Bedrock role to assume. Set to "" to call Bedrock in this account.
+  ModelId:
+    Type: String
+    Default: global.anthropic.claude-sonnet-5
+  BedrockRegion:
+    Type: String
+    Default: us-east-1
+
+Conditions:
+  UseBedrockRole: !Not [!Equals [!Ref BedrockRoleArn, ""]]
+
+Resources:
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: jhola-state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: false }
+
+  ProcessedTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: jhola-processed-messages
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
+
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub jhola-media-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      LifecycleConfiguration:
+        Rules:
+          - { Id: expire-inbound-media, Status: Enabled, ExpirationInDays: 7 }
+
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/jhola-whatsapp-agent
+      RetentionInDays: 14
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: jhola-whatsapp-agent-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: jhola-agent
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${FunctionLogGroup.Arn}:*
+              - Sid: WhatsApp
+                Effect: Allow
+                Action: [social-messaging:SendWhatsAppMessage, social-messaging:GetWhatsAppMessageMedia]
+                Resource: !Sub
+                  - arn:aws:social-messaging:${AWS::Region}:${AWS::AccountId}:phone-number-id/${Suffix}
+                  - Suffix: !Select [1, !Split ["phone-number-id-", !Ref PhoneNumberId]]
+              - Sid: Media
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub ${MediaBucket.Arn}/inbound/*
+              - Sid: State
+                Effect: Allow
+                Action:
+                  [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:Query, dynamodb:BatchWriteItem]
+                Resource: [!GetAtt StateTable.Arn, !GetAtt ProcessedTable.Arn]
+              - !If
+                - UseBedrockRole
+                - Sid: AssumeBedrockRole
+                  Effect: Allow
+                  Action: sts:AssumeRole
+                  Resource: !Ref BedrockRoleArn
+                - Sid: SameAccountBedrock
+                  Effect: Allow
+                  Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream, bedrock:Converse, bedrock:ConverseStream]
+                  Resource:
+                    - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/${ModelId}
+                    - arn:aws:bedrock:*::foundation-model/anthropic.*
+
+  JholaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+      BuildInSource: true
+    Properties:
+      FunctionName: jhola-whatsapp-agent
+      CodeUri: ../agent
+      Handler: jhola.lambda_handler.handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      MemorySize: 1024
+      Timeout: 180
+      Role: !GetAtt FunctionRole.Arn
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: WARN
+        LogGroup: !Ref FunctionLogGroup
+      EventInvokeConfig:
+        MaximumRetryAttempts: 1
+        MaximumEventAgeInSeconds: 600
+      Environment:
+        Variables:
+          JHOLA_TABLE: !Ref StateTable
+          JHOLA_DEDUPE_TABLE: !Ref ProcessedTable
+          JHOLA_MEDIA_BUCKET: !Ref MediaBucket
+          JHOLA_PHONE_NUMBER_ID: !Ref PhoneNumberId
+          JHOLA_ADMIN_PHONE: !Ref AdminPhone
+          JHOLA_DEMO_PHONES: !Ref DemoPhones
+          JHOLA_BEDROCK_ROLE_ARN: !Ref BedrockRoleArn
+          JHOLA_BEDROCK_PROFILE: ""
+          JHOLA_BEDROCK_REGION: !Ref BedrockRegion
+          JHOLA_MODEL_ID: !Ref ModelId
+          JHOLA_STATE_PATH: /tmp/jhola.json
+      Events:
+        WhatsAppEvents:
+          Type: SNS
+          Properties:
+            Topic: !Ref WhatsAppTopicArn
+
+Outputs:
+  FunctionName:
+    Value: !Ref JholaFunction
+  FunctionRoleArn:
+    Description: Trusted by the jhola-bedrock-invoker role in the Bedrock account
+    Value: !GetAtt FunctionRole.Arn
+  StateTableName:
+    Value: !Ref StateTable
+  ProcessedTableName:
+    Value: !Ref ProcessedTable
+  MediaBucketName:
+    Value: !Ref MediaBucket

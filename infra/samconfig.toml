@@ -1,0 +1,17 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "jhola"
+
+[default.build.parameters]
+cached = false
+
+[default.deploy.parameters]
+stack_name = "jhola"
+region = "ap-south-1"
+profile = "ayush-aws-bits-hack"
+resolve_s3 = true
+s3_prefix = "jhola"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false
