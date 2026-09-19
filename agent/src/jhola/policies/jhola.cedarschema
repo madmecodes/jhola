@@ -1,0 +1,43 @@
+// Jhola household ordering schema.
+// Items are checked one line at a time (purchase_item).
+// Payment is checked for the whole order (auto_pay / request_approval / approved_pay).
+
+entity Household;
+
+entity Member in [Household] {
+  name: String,
+  role: String, // admin | adult | house_help | teen
+};
+
+entity Product {
+  brand: String,
+  category: String,
+  price_inr: Long,
+  seller_rating: decimal,
+};
+
+entity Mandate {
+  monthly_cap_inr: Long,
+  approval_threshold_inr: Long,
+  house_help_daily_cap_inr: Long,
+};
+
+action purchase_item appliesTo {
+  principal: [Member],
+  resource: [Product],
+  context: {
+    quantity: Long,
+    line_total_inr: Long,
+  },
+};
+
+action auto_pay, request_approval, approved_pay appliesTo {
+  principal: [Member],
+  resource: [Mandate],
+  context: {
+    order_total_inr: Long,
+    month_spent_inr: Long,
+    member_spent_today_inr: Long,
+    approver_role: String, // "" unless an admin approved this order
+  },
+};

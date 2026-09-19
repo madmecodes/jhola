@@ -1,0 +1,495 @@
+{
+ "household_id": "gupta",
+ "name": "Gupta family",
+ "city": "Bengaluru",
+ "members": [
+  {
+   "id": "mom",
+   "name": "Sunita Gupta",
+   "display": "Mom",
+   "role": "admin",
+   "phone": "ADMIN_PHONE_PLACEHOLDER",
+   "language": "hinglish"
+  },
+  {
+   "id": "dad",
+   "name": "Rajesh Gupta",
+   "display": "Dad",
+   "role": "adult",
+   "phone": "+919999900002",
+   "language": "hinglish"
+  },
+  {
+   "id": "didi",
+   "name": "Kamla Didi",
+   "display": "Didi",
+   "role": "house_help",
+   "phone": "+919999900003",
+   "language": "hindi"
+  },
+  {
+   "id": "teen",
+   "name": "Aarav Gupta",
+   "display": "Aarav",
+   "role": "teen",
+   "phone": "+919999900004",
+   "language": "english"
+  }
+ ],
+ "mandate": {
+  "mandate_id": "MNDT-GUPTA-0001",
+  "payer_vpa": "sunita.gupta@simbank",
+  "payee": "Jhola Kirana (SIMULATED)",
+  "monthly_cap_inr": 5000,
+  "per_payment_approval_above_inr": 1000,
+  "house_help_daily_cap_inr": 500
+ },
+ "preferences": {
+  "atta": {
+   "sku": "aashirvaad-shudh-chakki-atta-5kg",
+   "qty": 1
+  },
+  "doodh": {
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 2
+  },
+  "milk": {
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 2
+  },
+  "dahi": {
+   "sku": "amul-masti-dahi-1kg",
+   "qty": 1
+  },
+  "namak": {
+   "sku": "tata-salt-iodised-salt-1kg",
+   "qty": 1
+  },
+  "toor dal": {
+   "sku": "tata-sampann-unpolished-toor-dal-500g",
+   "qty": 1
+  },
+  "dal": {
+   "sku": "tata-sampann-unpolished-toor-dal-500g",
+   "qty": 1
+  },
+  "rajma": {
+   "sku": "fortune-rajma-jammu-1kg",
+   "qty": 1
+  },
+  "chawal": {
+   "sku": "india-gate-basmati-rice-classic-5kg",
+   "qty": 1
+  },
+  "basmati": {
+   "sku": "india-gate-basmati-rice-classic-5kg",
+   "qty": 1
+  },
+  "pyaaz": {
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1
+  },
+  "aloo": {
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1
+  },
+  "tamatar": {
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1
+  },
+  "dhaniya": {
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1
+  },
+  "hari mirch": {
+   "sku": "freshfarm-green-chilli-100g",
+   "qty": 1
+  },
+  "adrak": {
+   "sku": "freshfarm-ginger-100g",
+   "qty": 1
+  },
+  "ghee": {
+   "sku": "amul-pure-ghee-1l",
+   "qty": 1
+  },
+  "chai patti": {
+   "sku": "tata-tea-premium-500g",
+   "qty": 1
+  },
+  "biscuit": {
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1
+  },
+  "maggi": {
+   "sku": "maggi-2-minute-masala-noodles-4-pack-280g",
+   "qty": 1
+  },
+  "surf": {
+   "sku": "surf-excel-easy-wash-detergent-powder-1kg",
+   "qty": 1
+  },
+  "vim": {
+   "sku": "vim-dishwash-bar-3-pack-3pcs",
+   "qty": 1
+  },
+  "notebook": {
+   "sku": "classmate-notebook-single-line-172-pages-1pcs",
+   "qty": 1
+  },
+  "geometry box": {
+   "sku": "camlin-geometry-box-scholar-1pcs",
+   "qty": 1
+  }
+ },
+ "purchase_history": [
+  {
+   "date": "2026-08-09",
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 14,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "aashirvaad-shudh-chakki-atta-5kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-09",
+   "sku": "vim-dishwash-bar-3-pack-3pcs",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-15",
+   "sku": "india-gate-basmati-rice-classic-5kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 14,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "tata-salt-iodised-salt-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "everest-jeera-whole-100g",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-16",
+   "sku": "surf-excel-easy-wash-detergent-powder-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-20",
+   "sku": "tata-sampann-unpolished-toor-dal-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-20",
+   "sku": "tata-tea-premium-500g",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-20",
+   "sku": "everest-turmeric-powder-100g",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 14,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "aashirvaad-shudh-chakki-atta-5kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-23",
+   "sku": "vim-dishwash-bar-3-pack-3pcs",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-30",
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 14,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-30",
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-30",
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-30",
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-30",
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-08-30",
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-08-31",
+   "sku": "classmate-notebook-single-line-172-pages-1pcs",
+   "qty": 2,
+   "by": "teen"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 14,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "aashirvaad-shudh-chakki-atta-5kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-06",
+   "sku": "vim-dishwash-bar-3-pack-3pcs",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-08",
+   "sku": "maggi-2-minute-masala-noodles-4-pack-280g",
+   "qty": 1,
+   "by": "teen"
+  },
+  {
+   "date": "2026-09-10",
+   "sku": "tata-sampann-unpolished-toor-dal-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-10",
+   "sku": "tata-tea-premium-500g",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-10",
+   "sku": "everest-turmeric-powder-100g",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-12",
+   "sku": "india-gate-basmati-rice-classic-5kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-13",
+   "sku": "nandini-toned-milk-500ml",
+   "qty": 14,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-13",
+   "sku": "freshfarm-onion-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-13",
+   "sku": "freshfarm-tomato-hybrid-1kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-13",
+   "sku": "freshfarm-potato-2kg",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-13",
+   "sku": "freshfarm-coriander-leaves-100g",
+   "qty": 1,
+   "by": "didi"
+  },
+  {
+   "date": "2026-09-13",
+   "sku": "parle-parle-g-gold-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-15",
+   "sku": "tata-salt-iodised-salt-1kg",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-15",
+   "sku": "everest-jeera-whole-100g",
+   "qty": 1,
+   "by": "mom"
+  },
+  {
+   "date": "2026-09-15",
+   "sku": "surf-excel-easy-wash-detergent-powder-1kg",
+   "qty": 1,
+   "by": "didi"
+  }
+ ]
+}
