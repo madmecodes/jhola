@@ -188,7 +188,7 @@ def bedrock_model() -> Model:
     from strands.models.bedrock import BedrockModel
 
     session = boto3.Session(profile_name=config.BEDROCK_PROFILE, region_name=config.BEDROCK_REGION)
-    return BedrockModel(model_id=config.MODEL_ID, boto_session=session, temperature=0.2, max_tokens=1500)
+    return BedrockModel(model_id=config.MODEL_ID, boto_session=session, max_tokens=1500)
 
 
 class JholaAgent:
