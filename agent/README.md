@@ -1,7 +1,7 @@
 # Jhola agent
 
-The household kirana ordering agent behind Jhola. Family members send a parchi photo or a text on
-WhatsApp (voice notes are planned, via transcription to text). The agent turns it into a cart of the family's usual brands and
+The household kirana ordering agent behind Jhola. Family members send a parchi photo, a text or a voice note on
+WhatsApp. The agent turns it into a cart of the family's usual brands and
 pack sizes, and a separate Cedar policy engine decides whether the order may be paid from the
 household's UPI AutoPay mandate.
 
@@ -29,7 +29,7 @@ OrderService.submit_order                                         orders.py
         |
 MandateService.debit(PaymentAuthorization)   SIMULATED UPI         upi.py
 AuditLog (every step, with Cedar inputs and outputs)               audit.py
-Repository: InMemory / JsonFile now, DynamoDB later (stub)         store.py
+Repository: InMemory / JsonFile (local), DynamoDB (AWS)              store.py
 ```
 
 | Module | What it does |
@@ -39,6 +39,8 @@ Repository: InMemory / JsonFile now, DynamoDB later (stub)         store.py
 | `policies/` | `jhola.cedarschema`, `items.cedar` (per line), `payments.cedar` (per order) |
 | `upi.py` | Simulated mandate: create, remaining, idempotent debit with 12-digit UPI-style refs. Refuses to debit without a valid authorization |
 | `vision.py` | `BedrockVisionReader` (Converse API with the image) and `FixtureVisionReader` (offline) |
+| `whatsapp.py` | WhatsApp channel: parses End User Messaging Social webhook events, dedupes, media via S3, voice notes via Transcribe, demo persona commands, replies with text / reply buttons / Polly voice |
+| `lambda_handler.py` | Lambda entry point (SNS event -> `WhatsAppChannel`), wired to DynamoDB, S3 and socialmessaging. See `../infra/README.md` |
 | `stub_model.py` | `ScriptedModel`, a Strands model provider that emits scripted tool calls, so the full loop runs without an LLM |
 | `scenarios.py` | Demo scenarios A to F |
 | `data/` | 198-SKU catalog, Gupta family household (members, roles, preferences, 6 weeks of history), recipes |
@@ -90,7 +92,8 @@ The LLM runs in its own AWS account, separate from the infra/WhatsApp account:
 | `JHOLA_MODEL_ID` | `global.anthropic.claude-sonnet-5` | Agent and vision model |
 | `JHOLA_BEDROCK_PROFILE` | `default` | AWS profile for Bedrock calls |
 | `JHOLA_BEDROCK_REGION` | `us-east-1` | Bedrock region |
-| `AWS_PROFILE` | `ayush-aws-bits-hack` | Infra (WhatsApp webhook, DynamoDB later), ap-south-1 |
+| `JHOLA_BEDROCK_ROLE_ARN` | unset | If set, assume this role for Bedrock (cross-account, used by the Lambda) |
+| `AWS_PROFILE` | `ayush-aws-bits-hack` | Infra (WhatsApp, Lambda, DynamoDB), ap-south-1 |
 | `JHOLA_ADMIN_PHONE` | `+919999900001` | Admin (Mom) WhatsApp number |
 
 ```bash
@@ -110,5 +113,6 @@ reply.text, reply.buttons, reply.notifications   # notifications: messages for o
 handle_approval("+919999900001", "JH-20260920-0001", "approve")
 ```
 
-The module-level functions use a local JSON state file (`agent/.state/jhola.json`). For tests or a
+On AWS, `jhola.lambda_handler.handler` runs the same agent behind WhatsApp with `DynamoDBRepository`
+(see `../infra/README.md`). The module-level functions use a local JSON state file (`agent/.state/jhola.json`). For tests or a
 different backend, build `JholaAgent(Jhola(repo, clock), model_factory, vision)` yourself.
