@@ -1,4 +1,6 @@
+import howPhoto from "@/public/images/how-it-works.webp";
 import SectionHeading from "./SectionHeading";
+import SectionPhoto from "./SectionPhoto";
 
 const steps = [
   {
@@ -32,10 +34,17 @@ export default function HowItWorks() {
   return (
     <section id="how" className="scroll-mt-20 border-y border-line bg-paper/70" aria-labelledby="how-title">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <SectionHeading id="how-title" eyebrow="How it works" title="From parchi to doorstep, without a new habit">
-          Jhola keeps the way Indian households already order, and adds the parts that were missing: consistent
-          brands, spending rules and a record of every rupee.
-        </SectionHeading>
+        <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-14">
+          <SectionHeading id="how-title" eyebrow="How it works" title="From parchi to doorstep, without a new habit">
+            Jhola keeps the way Indian households already order, and adds the parts that were missing: consistent
+            brands, spending rules and a record of every rupee.
+          </SectionHeading>
+          <SectionPhoto
+            src={howPhoto}
+            alt="A house helper in a kitchen taking a phone photo of a handwritten grocery list"
+            className="lg:rotate-[1.2deg]"
+          />
+        </div>
         <ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
           {steps.map((step, i) => (
             <li key={step.title} className="stitch flex flex-col rounded-2xl border border-line bg-cream p-6">

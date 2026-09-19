@@ -1,4 +1,6 @@
+import rulesPhoto from "@/public/images/household-rules.webp";
 import SectionHeading from "./SectionHeading";
+import SectionPhoto from "./SectionPhoto";
 
 type Member = {
   name: string;
@@ -59,10 +61,17 @@ export default function HouseholdRules() {
   return (
     <section id="rules" className="scroll-mt-20" aria-labelledby="rules-title">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <SectionHeading id="rules-title" eyebrow="Household rules" title="Everyone can order. Not everyone can order everything.">
-          The admin decides who may buy what, and up to how much. Jhola applies the same rules every time, whoever
-          is asking and however they ask.
-        </SectionHeading>
+        <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
+          <SectionPhoto
+            src={rulesPhoto}
+            alt="A family at the dining table looking at a phone together"
+            className="order-last lg:order-first lg:rotate-[-1.2deg]"
+          />
+          <SectionHeading id="rules-title" eyebrow="Household rules" title="Everyone can order. Not everyone can order everything.">
+            The admin decides who may buy what, and up to how much. Jhola applies the same rules every time, whoever
+            is asking and however they ask.
+          </SectionHeading>
+        </div>
         <ul className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {members.map((m) => {
             const o = outcomeStyle[m.example.outcome];

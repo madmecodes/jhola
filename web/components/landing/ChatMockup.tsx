@@ -1,4 +1,4 @@
-import BagMark from "../BagMark";
+import Logo from "../Logo";
 import Parchi from "./Parchi";
 
 const cart = [
@@ -28,9 +28,7 @@ export default function ChatMockup() {
       <div className="overflow-hidden rounded-[2.2rem] border-[9px] border-ink bg-ink shadow-[0_30px_60px_-25px_rgba(31,42,90,0.55)]">
         {/* Chat header */}
         <div className="flex items-center gap-3 bg-ink px-4 pb-3 pt-2 text-cream">
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-cream">
-            <BagMark className="h-6 w-6" />
-          </span>
+          <Logo className="h-9 w-9 ring-2 ring-cream/25" />
           <div className="min-w-0 leading-tight">
             <p className="text-sm font-semibold">Jhola</p>
             <p className="text-[11px] text-cream/70">Household ordering assistant</p>

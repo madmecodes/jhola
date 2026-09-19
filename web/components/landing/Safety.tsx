@@ -1,3 +1,6 @@
+import safetyPhoto from "@/public/images/safety-doorstep.webp";
+import SectionPhoto from "./SectionPhoto";
+
 const audit = [
   { t: "09:41:02", kind: "READ", text: "Parchi photo from Meera, 7 lines", tone: "text-cream/80" },
   { t: "09:41:05", kind: "MATCH", text: "7 of 7 items matched to household brands", tone: "text-cream/80" },
@@ -19,15 +22,22 @@ export default function Safety() {
   return (
     <section id="safety" className="scroll-mt-20 bg-ink text-cream" aria-labelledby="safety-title">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-turmeric">Safety by design</p>
-          <h2 id="safety-title" className="font-display mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-            The AI proposes. The rules decide.
-          </h2>
-          <p className="mt-4 text-base leading-relaxed text-cream/80 sm:text-lg">
-            Jhola&apos;s AI reads lists and builds carts, but it never gets the final say on money. Every order passes
-            through a separate policy engine, written in Cedar, the open-source policy language from AWS.
-          </p>
+        <div className="grid items-center gap-10 lg:grid-cols-[1fr_1fr] lg:gap-14">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-turmeric">Safety by design</p>
+            <h2 id="safety-title" className="font-display mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+              The AI proposes. The rules decide.
+            </h2>
+            <p className="mt-4 text-base leading-relaxed text-cream/80 sm:text-lg">
+              Jhola&apos;s AI reads lists and builds carts, but it never gets the final say on money. Every order passes
+              through a separate policy engine, written in Cedar, the open-source policy language from AWS.
+            </p>
+          </div>
+          <SectionPhoto
+            src={safetyPhoto}
+            alt="A packed jute bag of groceries waiting on a doorstep in the morning light"
+            tone="dark"
+          />
         </div>
 
         {/* Flow */}

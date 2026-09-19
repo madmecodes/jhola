@@ -1,5 +1,5 @@
 import Link from "next/link";
-import BagMark from "./BagMark";
+import Logo from "./Logo";
 import { CONTACT_EMAIL, HACKATHON_NAME } from "@/lib/config";
 
 export default function SiteFooter() {
@@ -8,7 +8,7 @@ export default function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-2.5">
-            <BagMark className="h-7 w-7" />
+            <Logo className="h-8 w-8" />
             <span className="font-display text-xl font-semibold">Jhola</span>
           </div>
           <p className="mt-3 max-w-sm text-sm leading-relaxed text-ink-soft">
