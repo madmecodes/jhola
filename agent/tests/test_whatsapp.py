@@ -60,7 +60,7 @@ def make(demo=frozenset({OWNER})):
     app = Jhola(repo, Clock(DEMO_NOW))
     agent = FakeAgent(app)
     t = FakeTransport()
-    ch = WhatsAppChannel(repo, t, MemoryDedupe(), lambda: agent, demo=set(demo))
+    ch = WhatsAppChannel(repo, t, MemoryDedupe(), lambda hid: agent, demo=set(demo))
     return ch, agent, t, repo
 
 
@@ -125,15 +125,29 @@ def test_whoami_and_reset():
     ch, agent, t, repo = make()
     ch.handle(parse_sns_event(sns(text_msg("/whoami", "w1")))[0])
     assert "Mom" in t.payloads[-1]["text"]["body"]
-    repo.put("orders", "JH-1", {"order_id": "JH-1"})
+    hh = agent.app.repo  # the demo household's scoped repository
+    hh.put("orders", "JH-1", {"order_id": "JH-1"})
+    assert hh.get("mandate", "MNDT-GUPTA-0001") is not None
     ch.handle(parse_sns_event(sns(text_msg("/reset", "w2")))[0])
-    assert repo.list("orders") == [] and repo.get("mandate", "MNDT-GUPTA-0001") is None
+    assert hh.list("orders") == [] and hh.get("mandate", "MNDT-GUPTA-0001") is None
 
 
-def test_commands_ignored_for_non_demo_phone_and_unknown_sender():
+def test_persona_commands_do_not_exist_for_ordinary_phones():
+    ch, agent, t, repo = make(demo=frozenset())  # Mom's phone is a member but not flagged demo
+    ch.handle(parse_sns_event(sns(text_msg("/as didi", "w1")))[0])
+    assert repo.get("demo_acting", OWNER) is None
+    assert agent.calls[-1][:3] == ("msg", OWNER, "/as didi")  # treated as an ordinary message from Mom
+    ch.handle(parse_sns_event(sns(text_msg("/help", "w2")))[0])
+    body = t.payloads[-1]["text"]["body"]
+    assert "/as" not in body and "/reset" not in body and "Add Sunita" in body  # Mom is an admin
+
+
+def test_unknown_sender_is_onboarded_not_rejected():
     ch, agent, t, repo = make(demo=frozenset())
     ch.handle(parse_sns_event(sns(text_msg("hi", "w1", frm="911234567890")))[0])
-    assert "not part of a Jhola household" in t.payloads[-1]["text"]["body"]
+    body = t.payloads[-1]["text"]["body"]
+    assert "1/3" in body and "jhola-phi.vercel.app/privacy" in body and "not part of" not in body
+    assert agent.calls == []
 
 
 def test_session_history_persists_in_repo():
@@ -168,3 +182,19 @@ def test_spoken_summary_drops_lists():
     from jhola.whatsapp import spoken_summary
     s = spoken_summary("Order ready.\n- Atta x1\n- Doodh x2\n*Total: Rs 342*. Paid.")
     assert s == "Order ready. Total: Rs 342. Paid."
+
+
+def test_lambda_dry_run_sends_nothing_and_returns_masked_payloads(monkeypatch):
+    from jhola import lambda_handler as lh
+
+    class NoSend:
+        def send(self, payload):
+            raise AssertionError("a dry run must never send")
+
+    repo = InMemoryRepository()
+    monkeypatch.setattr(lh, "_deps", lambda: (repo, NoSend(), MemoryDedupe()))
+    ev = sns(text_msg("hello", "w-dry", frm="917000012345"))
+    out = lh.handler({**ev, "jhola_dry_run": True}, None)
+    [p] = out["dry_run_outbound"]
+    assert p["to"] == "+91******2345" and "1/3" in p["text"]["body"]
+    assert repo.get("onboarding", "+917000012345")["step"] == "name"
