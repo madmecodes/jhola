@@ -144,7 +144,7 @@ export default function OverviewView() {
               <ul className="space-y-3">
                 {pending.map((p) => (
                   <li key={p.order_id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-turmeric/60 bg-turmeric-soft/60 p-4">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 basis-full sm:basis-auto">
                       <p className="font-semibold">
                         {p.member_name} <span className="font-normal text-ink-soft">wants {p.items_count} items</span>
                       </p>
@@ -153,7 +153,7 @@ export default function OverviewView() {
                       </p>
                     </div>
                     <p className="font-display text-xl font-semibold tabular-nums">{rs(p.total_inr)}</p>
-                    <div className="flex gap-2">
+                    <div className="ml-auto flex gap-2">
                       <Guarded>
                         {(key, disabled) => (
                           <>

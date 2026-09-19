@@ -5,6 +5,7 @@
 import type {
   AttackKind,
   AuditEvent,
+  ChatMember,
   ChatRequest,
   ChatResponse,
   HouseholdResponse,
@@ -25,8 +26,9 @@ type Sku = {
   size: string;
   category: string;
   price_inr: number;
-  fulfilment: "amazon_now" | "amazon_fresh";
+  fulfilment: string;
   keys: string[];
+  url?: string;
 };
 
 const CATALOG: Sku[] = [
@@ -209,7 +211,9 @@ function didiSpentToday(st: State) {
     .reduce((sum, o) => sum + o.paid_inr, 0);
 }
 
-type Line = { key: string; qty: number };
+type Line = { key: string; qty: number; s?: Sku };
+const skuOf = (l: Line) => l.s ?? sku(l.key);
+const lineLabel = (l: Line): string => (l.s ? `${l.s.brand} ${l.s.name}` : sku(l.key).keys[0]);
 
 function buildOrder(
   st: State,
@@ -222,8 +226,9 @@ function buildOrder(
 ): { order: Order; payment: { status: string; policy_ids: string[]; reason: string } } {
   const d = new Date(createdAt);
   const order_id = `JH-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-${String(++st.seq).padStart(4, "0")}`;
-  const items: OrderItem[] = lines.map(({ key, qty }) => {
-    const s = sku(key);
+  const items: OrderItem[] = lines.map((l) => {
+    const qty = l.qty;
+    const s = skuOf(l);
     return {
       sku: s.sku,
       name: `${s.name} ${s.size}`,
@@ -231,7 +236,7 @@ function buildOrder(
       qty,
       price_inr: s.price_inr,
       ...evalItem(member.role, s, qty, st.rules),
-      amazon_search_url: amazonUrl(s),
+      amazon_search_url: s.url ?? amazonUrl(s),
       fulfilment: s.fulfilment,
     };
   });
@@ -281,10 +286,10 @@ function buildOrder(
     const via = channel === "whatsapp" ? "WhatsApp" : "web console";
     ev(0, "message_received", member.name, `${input_type === "image" ? "Parchi photo" : input_type === "voice" ? "Voice note" : "Text"} received on ${via}`, { channel, input_type, member: member.key });
     if (input_type === "voice")
-      ev(2, "voice_transcribed", "Amazon Transcribe", "Voice note transcribed (hi-IN)", { language: "hi-IN", transcript: lines.map((l) => `${sku(l.key).keys[0]} ${l.qty}`).join(", ") });
+      ev(2, "voice_transcribed", "Amazon Transcribe", "Voice note transcribed (hi-IN)", { language: "hi-IN", transcript: lines.map((l) => `${lineLabel(l)} ${l.qty}`).join(", ") });
     if (input_type === "image")
-      ev(3, "parchi_read", "Claude on Bedrock", `Read ${lines.length} lines from the handwritten parchi`, { lines: lines.map((l) => ({ text: sku(l.key).keys[0], qty: l.qty })) });
-    ev(4, "items_extracted", "Claude on Bedrock", `Extracted ${lines.length} items`, { items: lines.map((l) => ({ query: sku(l.key).keys[0], quantity: l.qty })) });
+      ev(3, "parchi_read", "Claude on Bedrock", `Read ${lines.length} lines from the handwritten parchi`, { lines: lines.map((l) => ({ text: lineLabel(l), qty: l.qty })) });
+    ev(4, "items_extracted", "Claude on Bedrock", `Extracted ${lines.length} items`, { items: lines.map((l) => ({ query: lineLabel(l), quantity: l.qty })) });
     ev(5, "items_resolved", "catalog", `Resolved ${items.length} items to catalog SKUs`, { resolved: items.map((i) => ({ sku: i.sku, brand: i.brand, price_inr: i.price_inr })) });
     ev(6, "cart_built", "orchestrator", `Cart built, total Rs ${total}`, { order_id, total_inr: total, lines: items.length });
     ev(7, "policy_evaluated", "Cedar", `${items.filter((i) => i.decision === "allow").length} allowed, ${items.filter((i) => i.decision === "deny").length} denied`, {
@@ -583,6 +588,38 @@ export async function mockRedteam(attack: AttackKind): Promise<RedteamResult> {
   const t0 = Date.now();
   (res.audit as { ts: string }[]).forEach((a, i) => (a.ts = new Date(t0 + i * 40).toISOString()));
   return res;
+}
+
+export type CartLine = {
+  sku: string;
+  name: string;
+  brand: string;
+  size: string;
+  category: string;
+  price_inr: number;
+  fulfilment: string;
+  amazon_search_url: string;
+  qty: number;
+};
+
+// Checkout from the storefront concept: the cart goes through the same rules as a chat order.
+export async function mockCartOrder(member: ChatMember, cart: CartLine[]): Promise<ChatResponse> {
+  await delay(700);
+  const st = s();
+  const m = MEMBERS.find((x) => x.key === member) ?? MEMBERS[0];
+  const lines: Line[] = cart.map((c) => ({
+    key: c.sku,
+    qty: c.qty,
+    s: { sku: c.sku, name: c.name, brand: c.brand, size: c.size, category: c.category, price_inr: c.price_inr, fulfilment: c.fulfilment, keys: [c.name], url: c.amazon_search_url },
+  }));
+  const { order, payment } = buildOrder(st, m, lines, "web", "text", new Date().toISOString());
+  const reply =
+    order.status === "pending_approval"
+      ? "Rs 1,000 se upar hai. Mom se approval maanga hai."
+      : order.status === "denied"
+        ? `Order ruk gaya: ${payment.reason}`
+        : `${rs(order.paid_inr)} UPI AutoPay se paid. Ref ${order.upi_ref}.`;
+  return { reply_text: reply, order: clone(order) };
 }
 
 export async function mockRefill(): Promise<{ ok: boolean; order?: Order }> {

@@ -6,6 +6,7 @@ import * as mock from "./mock";
 import type {
   AttackKind,
   AuditEvent,
+  ChatMember,
   ChatRequest,
   ChatResponse,
   HouseholdResponse,
@@ -118,6 +119,13 @@ export const api = {
   },
   chat(req: ChatRequest): Promise<ChatResponse> {
     return IS_LIVE ? request("/api/chat", { method: "POST", body: JSON.stringify(req) }) : mock.mockChat(req);
+  },
+  // Storefront checkout. Live: the cart is sent to the agent as a plain order message, so it goes
+  // through the same resolve -> Cedar -> payment path as WhatsApp. Mock: evaluated in the browser.
+  checkoutCart(member: ChatMember, cart: mock.CartLine[]): Promise<ChatResponse> {
+    if (!IS_LIVE) return mock.mockCartOrder(member, cart);
+    const text = cart.map((c) => `${c.qty} x ${c.brand} ${c.name} ${c.size}`).join(", ");
+    return request("/api/chat", { method: "POST", body: JSON.stringify({ member, text: `Order: ${text}` }) });
   },
   draftRule(text: string): Promise<RuleDraft> {
     return IS_LIVE ? request("/api/rules/draft", { method: "POST", body: JSON.stringify({ text }) }) : mock.mockDraftRule(text);

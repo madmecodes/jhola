@@ -1,0 +1,103 @@
+{
+ "name": "Gupta family",
+ "city": "Bengaluru",
+ "mandate": {
+  "mandate_id": "MNDT-GUPTA-0001",
+  "payer_vpa": "sunita.gupta@simbank",
+  "payee": "Jhola Kirana (SIMULATED)",
+  "monthly_cap_inr": 5000,
+  "per_payment_approval_above_inr": 1000,
+  "house_help_daily_cap_inr": 500
+ },
+ "members": [
+  {
+   "id": "mom",
+   "name": "Sunita Gupta",
+   "display": "Mom",
+   "role": "admin"
+  },
+  {
+   "id": "dad",
+   "name": "Rajesh Gupta",
+   "display": "Dad",
+   "role": "adult"
+  },
+  {
+   "id": "didi",
+   "name": "Kamla Didi",
+   "display": "Didi",
+   "role": "house_help"
+  },
+  {
+   "id": "teen",
+   "name": "Aarav Gupta",
+   "display": "Aarav",
+   "role": "teen"
+  }
+ ],
+ "preferred_skus": [
+  "aashirvaad-shudh-chakki-atta-5kg",
+  "nandini-toned-milk-500ml",
+  "amul-masti-dahi-1kg",
+  "tata-salt-iodised-salt-1kg",
+  "tata-sampann-unpolished-toor-dal-500g",
+  "fortune-rajma-jammu-1kg",
+  "india-gate-basmati-rice-classic-5kg",
+  "freshfarm-onion-1kg",
+  "freshfarm-potato-2kg",
+  "freshfarm-tomato-hybrid-1kg",
+  "freshfarm-coriander-leaves-100g",
+  "freshfarm-green-chilli-100g",
+  "freshfarm-ginger-100g",
+  "amul-pure-ghee-1l",
+  "tata-tea-premium-500g",
+  "parle-parle-g-gold-1kg",
+  "maggi-2-minute-masala-noodles-4-pack-280g",
+  "surf-excel-easy-wash-detergent-powder-1kg",
+  "vim-dishwash-bar-3-pack-3pcs",
+  "classmate-notebook-single-line-172-pages-1pcs",
+  "camlin-geometry-box-scholar-1pcs"
+ ],
+ "usual_by_member": {
+  "mom": [
+   "aashirvaad-shudh-chakki-atta-5kg",
+   "nandini-toned-milk-500ml",
+   "amul-masti-dahi-1kg",
+   "tata-salt-iodised-salt-1kg",
+   "tata-sampann-unpolished-toor-dal-500g",
+   "fortune-rajma-jammu-1kg",
+   "india-gate-basmati-rice-classic-5kg",
+   "freshfarm-onion-1kg",
+   "freshfarm-potato-2kg",
+   "freshfarm-tomato-hybrid-1kg",
+   "freshfarm-coriander-leaves-100g",
+   "freshfarm-green-chilli-100g",
+   "freshfarm-ginger-100g",
+   "amul-pure-ghee-1l",
+   "tata-tea-premium-500g",
+   "parle-parle-g-gold-1kg",
+   "maggi-2-minute-masala-noodles-4-pack-280g",
+   "surf-excel-easy-wash-detergent-powder-1kg",
+   "vim-dishwash-bar-3-pack-3pcs",
+   "classmate-notebook-single-line-172-pages-1pcs",
+   "camlin-geometry-box-scholar-1pcs",
+   "everest-jeera-whole-100g",
+   "tata-sampann-unpolished-toor-dal-1kg",
+   "everest-turmeric-powder-100g"
+  ],
+  "dad": [],
+  "didi": [
+   "nandini-toned-milk-500ml",
+   "freshfarm-onion-1kg",
+   "freshfarm-tomato-hybrid-1kg",
+   "freshfarm-potato-2kg",
+   "freshfarm-coriander-leaves-100g",
+   "vim-dishwash-bar-3-pack-3pcs",
+   "surf-excel-easy-wash-detergent-powder-1kg"
+  ],
+  "teen": [
+   "classmate-notebook-single-line-172-pages-1pcs",
+   "maggi-2-minute-masala-noodles-4-pack-280g"
+  ]
+ }
+}

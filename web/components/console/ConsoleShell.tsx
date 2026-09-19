@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
-import { FlaskConical, LayoutDashboard, MessageCircle, ScrollText, ShieldAlert, Scale } from "lucide-react";
+import { FlaskConical, LayoutDashboard, MessageCircle, ScrollText, ShieldAlert, Scale, ShoppingBag } from "lucide-react";
 import Logo from "@/components/Logo";
 import { api, connectionStore, IS_LIVE } from "@/lib/jhola/client";
 import { AdminKeyControl } from "./AdminKey";
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/console/audit", label: "Audit trail", icon: ScrollText },
   { href: "/console/rules", label: "Rules", icon: Scale },
   { href: "/console/redteam", label: "Try to break it", icon: ShieldAlert },
+  { href: "/store", label: "Store concept", icon: ShoppingBag },
 ] as const;
 
 function LiveIndicator() {
