@@ -10,8 +10,10 @@ entity Member in [Household] {
 };
 
 entity Product {
+  name: String,
   brand: String,
   category: String,
+  tags: Set<String>, // lowercase English / Hinglish words, e.g. "chocolate", "atta", "energy"
   price_inr: Long,
   seller_rating: decimal,
 };

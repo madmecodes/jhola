@@ -11,11 +11,10 @@ class AuditLog:
     def __init__(self, repo: Repository, clock: Clock) -> None:
         self.repo = repo
         self.clock = clock
-        self._n = repo.count("audit")
 
     def log(self, event: str, order_id: str | None = None, actor: str | None = None, **data: Any) -> dict:
-        self._n += 1
-        n = self._n
+        # Atomic counter: the WhatsApp and console Lambdas write to the same log concurrently.
+        n = self.repo.next_seq("audit", lambda: self.repo.count("audit"))
         ev = {
             "seq": n,
             "ts": self.clock.now().isoformat(),

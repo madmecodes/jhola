@@ -408,6 +408,12 @@ class WhatsAppChannel:
             log.info("duplicate_skipped", extra={"wamid": msg.wamid})
             return
         log.info("inbound", extra={"wamid": msg.wamid, "from": msg.phone, "kind": msg.kind})
+        try:  # WhatsApp's 24-hour customer-service window starts at the user's last message
+            import time
+
+            self.repo.put("wa_last_inbound", msg.phone, {"phone": msg.phone, "at": int(time.time())})
+        except Exception as e:  # noqa: BLE001
+            log.warning("last_inbound_failed", extra={"error": str(e)})
         try:
             self.t.mark_read(msg.wamid)
         except Exception as e:  # noqa: BLE001
@@ -443,7 +449,7 @@ class WhatsAppChannel:
             if not text:
                 self._send(msg.phone, "Voice note samajh nahi aaya. Ek baar phir boliye ya type karke bhejiye.")
                 return
-            reply = agent.handle_message(member.phone, f"(voice note) {text}")
+            reply = agent.handle_message(member.phone, f"(voice note) {text}", input_type="voice")
             self._deliver(msg.phone, reply)
             self._voice_reply(msg.phone, reply.text)
             return

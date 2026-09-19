@@ -44,7 +44,7 @@ class FakeAgent:
         self.app = app
         self.calls = []
 
-    def handle_message(self, phone, text=None, image_bytes=None, media_type=None):
+    def handle_message(self, phone, text=None, image_bytes=None, media_type=None, **kw):
         self.calls.append(("msg", phone, text, image_bytes, media_type))
         n = [Outbound(OWNER, "mom", "Didi wants Rs 1179. Approve?",
                       [{"id": "approve:JH-1", "title": "Approve"}, {"id": "reject:JH-1", "title": "Reject"}])]

@@ -52,14 +52,34 @@ class PaymentAuthorization:
 
 
 class PolicyEngine:
-    def __init__(self, household: Household, policy_dir: Path = POLICY_DIR) -> None:
+    def __init__(self, household: Household, policy_dir: Path = POLICY_DIR,
+                 custom_rules: list[dict] | None = None) -> None:
+        """custom_rules: active household rules added from the console, each {id, title, cedar, ...}.
+
+        They are evaluated together with the base policies (forbid always wins). A stored rule that
+        no longer validates against the schema is skipped, never half-applied.
+        """
         self.hh = household
-        self.policy_text = "\n".join(p.read_text() for p in sorted(policy_dir.glob("*.cedar")))
+        self.base_text = "\n".join(p.read_text() for p in sorted(policy_dir.glob("*.cedar")))
         self.schema_text = (policy_dir / "jhola.cedarschema").read_text()
+        self.custom_rules = []
+        texts = [self.base_text]
+        for r in custom_rules or []:
+            res = cedarpy.validate_policies(self.base_text + "\n" + r["cedar"], self.schema_text)
+            if res.validation_passed:
+                texts.append(r["cedar"])
+                self.custom_rules.append(r)
+        self.policy_text = "\n".join(texts)
         self.policies = cedarpy.PolicySet.from_str(self.policy_text)
         self.schema = cedarpy.Schema.from_str(self.schema_text)
         pj = json.loads(cedarpy.policies_to_json_str(self.policy_text))["staticPolicies"]
         self.annotations = {pid: p.get("annotations", {}) for pid, p in pj.items()}
+        titles = {f"custom-{r['id']}": r for r in self.custom_rules}
+        for ann in self.annotations.values():
+            rule = titles.get(ann.get("id", "").rsplit(".", 1)[0])
+            if rule:
+                ann.setdefault("reason", rule.get("title", ""))
+                ann.setdefault("hinglish", rule.get("title_hinglish") or rule.get("title", ""))
         self._key = os.urandom(32)  # never leaves this object
 
     # ---------- validation ----------
@@ -95,8 +115,10 @@ class PolicyEngine:
         return {
             "uid": {"type": "Product", "id": p["id"]},
             "attrs": {
+                "name": p.get("name", ""),
                 "brand": p["brand"],
                 "category": p["category"],
+                "tags": [str(t).lower() for t in p.get("tags", [])],
                 "price_inr": int(p["price_inr"]),
                 "seller_rating": {"__extn": {"fn": "decimal", "arg": f"{float(p['seller_rating']):.1f}"}},
             },

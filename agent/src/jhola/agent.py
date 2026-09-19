@@ -57,6 +57,7 @@ class Turn:
     calls: list[dict] = field(default_factory=list)
     last_submit: dict | None = None
     draft_order: str | None = None
+    meta: dict = field(default_factory=dict)  # channel / input_type, stamped on orders
 
 
 def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None) -> list:
@@ -152,7 +153,7 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None) -> list:
         Args:
             items: list of {"sku": "<sku from resolve_item>", "qty": <int>}.
         """
-        order = app.build_cart(member, items)
+        order = app.build_cart(member, items, meta=turn.meta)
         turn.order_ids.append(order["order_id"])
         turn.draft_order = order["order_id"]
         return record("build_cart", {"items": items}, order)
@@ -207,7 +208,7 @@ class JholaAgent:
         keep = {"text", "toolUse", "toolResult"}
         msgs = [{"role": m["role"], "content": [b for b in m["content"] if keep & b.keys()]} for m in messages]
         msgs = [m for m in msgs if m["content"]][-20:]
-        self.app.repo.put("sessions", phone, {"messages": msgs if _clean_cut(msgs) else [],
+        self.app.repo.put("sessions", phone, {"key": phone, "messages": msgs if _clean_cut(msgs) else [],
                                                "updated_at": self.app.clock.now().isoformat()})
 
     @property
@@ -225,15 +226,19 @@ class JholaAgent:
                                     today=now.date().isoformat(), weekday=now.strftime("%A"))
 
     def handle_message(self, sender_phone: str, text: str | None = None, image_bytes: bytes | None = None,
-                       media_type: str | None = None, model: Model | None = None) -> Reply:
+                       media_type: str | None = None, model: Model | None = None, channel: str = "whatsapp",
+                       input_type: str | None = None, session_key: str | None = None) -> Reply:
+        """session_key: conversation history key (default the member's phone; the web console uses its own)."""
         app = self.app
         member = app.hh.member_by_phone(sender_phone)
         if member is None:
             app.audit.log("message_rejected", actor=sender_phone, reason="unknown sender")
             return Reply("Sorry, this number is not part of a Jhola household.")
+        input_type = input_type or ("image" if image_bytes else "text")
         app.audit.log("message_received", actor=member.id, text=text, has_image=bool(image_bytes),
-                      media_type=media_type)
-        turn = Turn(member, text, image_bytes, media_type)
+                      media_type=media_type, channel=channel, input_type=input_type)
+        turn = Turn(member, text, image_bytes, media_type, meta={"channel": channel, "input_type": input_type})
+        session_key = session_key or member.phone
         prompt = text or ""
         if image_bytes:
             prompt = (prompt + "\n" if prompt else "") + "[photo of a handwritten list attached]"
@@ -241,14 +246,14 @@ class JholaAgent:
             model=model or self.model_factory(),
             system_prompt=self._system_prompt(member),
             tools=make_tools(app, turn, self.vision),
-            messages=self._load_session(member.phone) if model is None else [],
+            messages=self._load_session(session_key) if model is None else [],
             tool_executor=SequentialToolExecutor(),
             callback_handler=None,
         )
         result = agent(prompt)
         if model is None:
             try:
-                self._save_session(member.phone, agent.messages)
+                self._save_session(session_key, agent.messages)
             except Exception as e:  # noqa: BLE001  history is best effort
                 app.audit.log("session_save_failed", actor="jhola", member=member.id, error=str(e))
         reply_text = str(result).strip()
@@ -301,7 +306,8 @@ class JholaAgent:
             return Reply("Batayiye kya badalna hai.")
         return Reply("OK")
 
-    def run_weekly_refill(self, model: Model | None = None) -> Reply:
+    def run_weekly_refill(self, model: Model | None = None, session_key: str | None = None,
+                          channel: str = "whatsapp") -> Reply:
         """Scheduled (Sunday) job: propose the weekly refill to the admin."""
         admin = self.app.hh.admins()[0]
         self.app.audit.log("scheduled_job", actor="scheduler", job="weekly_refill")
@@ -309,7 +315,7 @@ class JholaAgent:
             admin.phone,
             "[scheduled weekly refill] Predict what is running out this week and propose a draft cart. "
             "Do not submit it; ask me to confirm.",
-            model=model,
+            model=model, channel=channel, input_type="text", session_key=session_key,
         )
 
 

@@ -29,12 +29,15 @@ class Outbound:
 class Jhola:
     """Service container. One per household."""
 
-    def __init__(self, repo: Repository, clock: Clock | None = None, month_spent_inr: int | None = None) -> None:
+    def __init__(self, repo: Repository, clock: Clock | None = None, month_spent_inr: int | None = None,
+                 custom_rules: list[dict] | None = None) -> None:
         self.repo = repo
         self.clock = clock or Clock()
         self.catalog = Catalog.load()
         self.hh = Household.load(repo)
-        self.policy = PolicyEngine(self.hh)
+        if custom_rules is None:
+            custom_rules = [r for r in repo.list("rules") if r.get("active")]
+        self.policy = PolicyEngine(self.hh, custom_rules=custom_rules)
         self.upi = MandateService(repo, self.policy, self.clock)
         self.audit = AuditLog(repo, self.clock)
         self.resolver = Resolver(self.catalog, self.hh)
@@ -62,10 +65,18 @@ class Jhola:
 
     # ---------- carts ----------
     def _new_order_id(self) -> str:
-        n = len(self.repo.list("orders")) + 1
+        n = self.repo.next_seq("orders", self._highest_order_number)
         return f"JH-{self.clock.now():%Y%m%d}-{n:04d}"
 
-    def build_cart(self, member: Member, items: list[dict], note: str = "") -> dict:
+    def _highest_order_number(self) -> int:
+        """Seed for the order counter: never reuse an id still referenced by orders or the audit log
+        (a demo reset clears orders but keeps the audit trail)."""
+        ids = [o.get("order_id") for o in self.repo.list("orders")]
+        ids += [e.get("order_id") for e in self.repo.list("audit")]
+        nums = [int(i.rsplit("-", 1)[1]) for i in ids if i and i.startswith("JH-") and i.rsplit("-", 1)[1].isdigit()]
+        return max(nums, default=0)
+
+    def build_cart(self, member: Member, items: list[dict], note: str = "", meta: dict | None = None) -> dict:
         lines, problems = [], []
         for it in items:
             p = self.catalog.get(str(it.get("sku", "")))
@@ -85,6 +96,9 @@ class Jhola:
             "lines": lines,
             "total_inr": sum(l["line_total_inr"] for l in lines),
             "note": note,
+            "channel": "whatsapp",
+            "input_type": "text",
+            **(meta or {}),
         }
         self.repo.put("orders", order["order_id"], order)
         self.audit.log("cart_built", order["order_id"], actor=member.id, lines=lines,
