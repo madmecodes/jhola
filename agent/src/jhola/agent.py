@@ -184,11 +184,11 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None) -> list:
 
 
 def bedrock_model() -> Model:
-    import boto3
+    from botocore.config import Config
     from strands.models.bedrock import BedrockModel
 
-    session = boto3.Session(profile_name=config.BEDROCK_PROFILE, region_name=config.BEDROCK_REGION)
-    return BedrockModel(model_id=config.MODEL_ID, boto_session=session, max_tokens=1500)
+    return BedrockModel(model_id=config.MODEL_ID, boto_session=config.bedrock_session(), max_tokens=1500,
+                        boto_client_config=Config(read_timeout=90, retries={"max_attempts": 3, "mode": "adaptive"}))
 
 
 class JholaAgent:
@@ -197,7 +197,18 @@ class JholaAgent:
         self.app = app
         self.model_factory = model_factory or bedrock_model
         self._vision = vision
-        self.sessions: dict[str, list] = {}
+
+    # Conversation history per phone, persisted in the repository so it survives Lambda cold starts.
+    def _load_session(self, phone: str) -> list:
+        doc = self.app.repo.get("sessions", phone)
+        return doc["messages"] if doc else []
+
+    def _save_session(self, phone: str, messages: list) -> None:
+        keep = {"text", "toolUse", "toolResult"}
+        msgs = [{"role": m["role"], "content": [b for b in m["content"] if keep & b.keys()]} for m in messages]
+        msgs = [m for m in msgs if m["content"]][-20:]
+        self.app.repo.put("sessions", phone, {"messages": msgs if _clean_cut(msgs) else [],
+                                               "updated_at": self.app.clock.now().isoformat()})
 
     @property
     def vision(self) -> VisionReader | None:
@@ -230,13 +241,16 @@ class JholaAgent:
             model=model or self.model_factory(),
             system_prompt=self._system_prompt(member),
             tools=make_tools(app, turn, self.vision),
-            messages=self.sessions.get(member.phone, []) if model is None else [],
+            messages=self._load_session(member.phone) if model is None else [],
             tool_executor=SequentialToolExecutor(),
             callback_handler=None,
         )
         result = agent(prompt)
         if model is None:
-            self.sessions[member.phone] = agent.messages[-20:] if _clean_cut(agent.messages[-20:]) else []
+            try:
+                self._save_session(member.phone, agent.messages)
+            except Exception as e:  # noqa: BLE001  history is best effort
+                app.audit.log("session_save_failed", actor="jhola", member=member.id, error=str(e))
         reply_text = str(result).strip()
         buttons = []
         if turn.draft_order and member.role == "admin":
@@ -262,7 +276,7 @@ class JholaAgent:
         return Reply(text, [], app.drain_outbox(), [order_id])
 
     def handle_button(self, phone: str, button_id: str) -> Reply:
-        """WhatsApp interactive button replies: approve:<id>, reject:<id>, order:<id>."""
+        """WhatsApp interactive button replies: approve:<id>, reject:<id>, order:<id>, topup:<mandate>, edit."""
         kind, _, ref = button_id.partition(":")
         if kind in ("approve", "reject"):
             return self.handle_approval(phone, ref, "approve" if kind == "approve" else "reject")
@@ -275,6 +289,16 @@ class JholaAgent:
             if res.get("payment"):
                 text += f" Rs {res['payment']['amount_inr']} paid, UPI ref {res['payment']['upi_ref']} (SIMULATED)."
             return Reply(text, [], self.app.drain_outbox(), [ref])
+        if kind == "topup":
+            admin = self.app.hh.member_by_phone(phone)
+            if admin is None or admin.role != "admin":
+                return Reply("Only the household admin can top up the mandate.")
+            m = self.app.upi.top_up(ref, self.app.upi.get(ref)["monthly_cap_inr"] + TOPUP_STEP_INR)
+            self.app.audit.log("mandate_topped_up", actor=admin.id, mandate_id=ref, new_cap_inr=m["monthly_cap_inr"])
+            return Reply(f"Mandate limit ab Rs {m['monthly_cap_inr']} hai (SIMULATED). "
+                         f"Bacha: Rs {m['monthly_cap_inr'] - m['month_spent_inr']}. Order dobara bhejiye.")
+        if kind == "edit":
+            return Reply("Batayiye kya badalna hai.")
         return Reply("OK")
 
     def run_weekly_refill(self, model: Model | None = None) -> Reply:
@@ -287,6 +311,9 @@ class JholaAgent:
             "Do not submit it; ask me to confirm.",
             model=model,
         )
+
+
+TOPUP_STEP_INR = 2000
 
 
 def _clean_cut(msgs: list) -> bool:

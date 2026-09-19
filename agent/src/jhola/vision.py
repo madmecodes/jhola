@@ -42,10 +42,8 @@ class FixtureVisionReader(VisionReader):
 
 class BedrockVisionReader(VisionReader):
     def __init__(self, model_id: str | None = None, session=None) -> None:
-        import boto3
-
         self.model_id = model_id or config.MODEL_ID
-        self.session = session or boto3.Session(profile_name=config.BEDROCK_PROFILE, region_name=config.BEDROCK_REGION)
+        self.session = session or config.bedrock_session()
         self.client = self.session.client("bedrock-runtime")
 
     def read_list(self, image_bytes: bytes, media_type: str = "image/jpeg") -> dict:

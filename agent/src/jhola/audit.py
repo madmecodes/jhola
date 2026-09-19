@@ -11,7 +11,7 @@ class AuditLog:
     def __init__(self, repo: Repository, clock: Clock) -> None:
         self.repo = repo
         self.clock = clock
-        self._n = len(repo.list("audit"))
+        self._n = repo.count("audit")
 
     def log(self, event: str, order_id: str | None = None, actor: str | None = None, **data: Any) -> dict:
         self._n += 1
