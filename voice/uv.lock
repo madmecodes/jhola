@@ -443,7 +443,7 @@ wheels = [
 [[package]]
 name = "jhola"
 version = "0.1.0"
-source = { directory = "../agent" }
+source = { editable = "../agent" }
 dependencies = [
     { name = "boto3" },
     { name = "cedarpy" },
@@ -477,7 +477,7 @@ dependencies = [
 requires-dist = [
     { name = "aws-sdk-bedrock-runtime", specifier = ">=0.1.0,<0.2.0" },
     { name = "boto3", specifier = ">=1.40" },
-    { name = "jhola", directory = "../agent" },
+    { name = "jhola", editable = "../agent" },
     { name = "websockets", specifier = ">=15.0" },
 ]
 

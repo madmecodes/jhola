@@ -256,7 +256,10 @@ class VoiceShop:
         nut = _nutrition(p)
         d["nutrition"] = nut if nut else "not available for this product"
         if nut:
-            d["nutrition_note"] = "approximate values"
+            d["nutrition_note"] = f"{p.get('nutrition_source', 'approximate')} values per {p.get('nutrition_basis', '100g')}"
+        for key in ("diet", "allergens", "serving", "shelf_life_days", "perishable"):
+            if p.get(key) not in (None, [], {}):
+                d[key] = p[key]
         if not p["in_stock"]:
             sub = self.app.resolver._substitute(p)
             d["closest_in_stock_swap"] = _brief(sub, self.usual) if sub else None
