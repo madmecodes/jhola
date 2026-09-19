@@ -25,7 +25,11 @@ BEDROCK_ROLE_ARN = os.environ.get("JHOLA_BEDROCK_ROLE_ARN", "")
 INFRA_PROFILE = os.environ.get("AWS_PROFILE", "ayush-aws-bits-hack")
 INFRA_REGION = os.environ.get("JHOLA_INFRA_REGION", "ap-south-1")
 
+# Demo household (Gupta family): the phone that plays Mom, its admin.
 ADMIN_PHONE = os.environ.get("JHOLA_ADMIN_PHONE", "+919999900001")
+
+# "off": ask Bedrock to skip extended thinking (about half the latency). "default": model default.
+THINKING = os.environ.get("JHOLA_THINKING", "off").lower()
 
 _bedrock_session = None
 _bedrock_session_at = 0.0
