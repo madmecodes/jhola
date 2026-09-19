@@ -1,0 +1,19 @@
+[project]
+name = "jhola-voice"
+version = "0.1.0"
+description = "Jhola real-time voice shopping assistant (Amazon Nova 2 Sonic over WebSocket)"
+authors = [{ name = "madmecodes", email = "ayushguptadev1@gmail.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "aws-sdk-bedrock-runtime>=0.1.0,<0.2.0",
+    "boto3>=1.40",
+    "websockets>=15.0",
+    "jhola",
+]
+
+[tool.uv.sources]
+jhola = { path = "../agent" }
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"

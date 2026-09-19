@@ -1,0 +1,10 @@
+**/.venv
+**/node_modules
+**/__pycache__
+**/.git
+**/.next
+**/.aws-sam
+web
+infra
+assets
+agent/.state

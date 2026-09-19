@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Cross-account Bedrock access for the Jhola voice assistant. Deployed in the Bedrock account
+  (590183982967, us-east-1). Trusts only the voice server's ECS task role in the infra account and
+  allows only Amazon Nova 2 Sonic invocation (bidirectional streaming).
+
+Parameters:
+  TaskRoleArn:
+    Type: String
+    Default: arn:aws:iam::446413909932:role/jhola-voice-task-role
+    Description: ECS task role of the voice server in the infra account
+  SonicModelId:
+    Type: String
+    Default: amazon.nova-2-sonic-v1:0
+
+Resources:
+  VoiceBedrockInvokerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: jhola-voice-bedrock-invoker
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref TaskRoleArn }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-nova-2-sonic
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeNovaSonicBidirectional
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModelWithBidirectionalStream
+                  - bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:aws:bedrock:us-east-1::foundation-model/${SonicModelId}
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt VoiceBedrockInvokerRole.Arn

@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Jhola voice assistant (stack jhola-voice, infra account 446413909932, ap-south-1).
+  ECS Fargate ARM64 WebSocket server behind an internal-facing ALB, fronted by CloudFront for
+  wss:// without a custom domain. The task assumes a role in the Bedrock account to reach
+  Amazon Nova 2 Sonic, and writes carts, orders and the audit log to the shared jhola-state table.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: ECR image (arm64) for the voice server
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Public subnets for the ALB and the Fargate task
+  StateTableName:
+    Type: String
+    Default: jhola-state
+  BedrockRoleArn:
+    Type: String
+    Default: arn:aws:iam::590183982967:role/jhola-voice-bedrock-invoker
+  AllowedOrigins:
+    Type: String
+    Default: https://jhola-phi.vercel.app,http://localhost:3000
+  CloudFrontPrefixList:
+    Type: String
+    Default: pl-9aa247f3
+    Description: com.amazonaws.global.cloudfront.origin-facing in ap-south-1
+  MaxSessionSeconds:
+    Type: String
+    Default: "300"
+  CreateCloudFront:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: >
+      Create the CloudFront distribution in this account. The infra account is not verified for
+      CloudFront, so the distribution lives in the Bedrock account instead (infra/voice-cloudfront.yaml).
+
+Conditions:
+  WithCloudFront: !Equals [!Ref CreateCloudFront, "true"]
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/jhola-voice
+      RetentionInDays: 7
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: jhola-voice-execution-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: jhola-voice-task-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: voice-server
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AssumeBedrockRole
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref BedrockRoleArn
+              - Sid: JholaState
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:BatchWriteItem
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${StateTableName}
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Jhola voice ALB, CloudFront origin-facing only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixList
+          Description: CloudFront origin-facing ranges
+
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Jhola voice Fargate task
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+          Description: ALB to the WebSocket server
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: jhola-voice-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets: !Ref SubnetIds
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "360"
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: jhola-voice-tg
+      VpcId: !Ref VpcId
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher: { HttpCode: "200" }
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "10"
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: jhola-voice
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: jhola-voice
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: voice
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - { Name: PORT, Value: "8080" }
+            - { Name: AWS_REGION, Value: !Ref "AWS::Region" }
+            - { Name: JHOLA_TABLE, Value: !Ref StateTableName }
+            - { Name: JHOLA_INFRA_REGION, Value: !Ref "AWS::Region" }
+            - { Name: JHOLA_VOICE_BEDROCK_ROLE_ARN, Value: !Ref BedrockRoleArn }
+            - { Name: JHOLA_BEDROCK_REGION, Value: us-east-1 }
+            - { Name: JHOLA_BEDROCK_PROFILE, Value: "" }
+            - { Name: JHOLA_VOICE_ORIGINS, Value: !Ref AllowedOrigins }
+            - { Name: JHOLA_VOICE_MAX_SECONDS, Value: !Ref MaxSessionSeconds }
+            - { Name: JHOLA_VOICE_MAX_PER_IP, Value: "2" }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: voice
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: Listener
+    Properties:
+      ServiceName: jhola-voice
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      EnableExecuteCommand: true
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 200
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !Ref SubnetIds
+          SecurityGroups: [!Ref ServiceSecurityGroup]
+      LoadBalancers:
+        - ContainerName: voice
+          ContainerPort: 8080
+          TargetGroupArn: !Ref TargetGroup
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: WithCloudFront
+    Properties:
+      DistributionConfig:
+        Comment: Jhola voice WebSocket (wss)
+        Enabled: true
+        HttpVersion: http1.1
+        PriceClass: PriceClass_All
+        Origins:
+          - Id: alb
+            DomainName: !GetAtt LoadBalancer.DNSName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: alb
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: false
+          # CachingDisabled + AllViewer: WebSocket upgrade headers and Origin reach the server.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+
+Outputs:
+  WssUrl:
+    Condition: WithCloudFront
+    Description: WebSocket URL for the browser client
+    Value: !Sub wss://${Distribution.DomainName}
+  AlbDns:
+    Value: !GetAtt LoadBalancer.DNSName
+  TaskRoleArn:
+    Value: !GetAtt TaskRole.Arn
+  ClusterName:
+    Value: !Ref Cluster
