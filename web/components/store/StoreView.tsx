@@ -1,7 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Apple,
   BadgeCheck,
@@ -16,6 +17,7 @@ import {
   LayoutGrid,
   Lock,
   MapPin,
+  Mic,
   Milk,
   Minus,
   PencilRuler,
@@ -35,7 +37,28 @@ import { usePolling } from "@/lib/jhola/hooks";
 import type { ChatMember, ChatResponse } from "@/lib/jhola/types";
 import catalogData from "@/lib/store/catalog.json";
 import householdData from "@/lib/store/household.json";
+import type { VoiceCart, VoiceDecisions, VoiceOrder } from "@/lib/voice/types";
 import { checkItem, checkPayment, type Role } from "./policy";
+
+// Mic, WebSocket and AudioWorklet only exist in the browser.
+const JholaVoiceAssistant = dynamic(() => import("@/components/voice/JholaVoiceAssistant"), {
+  ssr: false,
+  loading: () => <p className="rounded-2xl border border-line bg-paper px-3 py-4 text-center text-sm text-ink-soft">Loading voice...</p>,
+});
+const VOICE_WSS = process.env.NEXT_PUBLIC_JHOLA_VOICE_WSS ?? "";
+
+const DESKTOP = "(min-width: 1024px)";
+function useIsDesktop() {
+  return useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia(DESKTOP);
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    () => window.matchMedia(DESKTOP).matches,
+    () => true,
+  );
+}
 
 type Product = (typeof catalogData)[number];
 const CATALOG = catalogData as Product[];
@@ -96,14 +119,16 @@ async function fileToBase64(file: File): Promise<string> {
   }
 }
 
-function Stepper({ qty, onChange, label, size = "md" }: { qty: number; onChange: (q: number) => void; label: string; size?: "sm" | "md" }) {
+function Stepper({ qty, onChange, label, size = "md", disabled = false }: { qty: number; onChange: (q: number) => void; label: string; size?: "sm" | "md"; disabled?: boolean }) {
   const h = size === "sm" ? "h-7" : "h-8";
   if (qty <= 0)
     return (
       <button
         type="button"
         onClick={() => onChange(1)}
-        className={`${h} w-full rounded-lg border px-3 text-sm font-bold`}
+        disabled={disabled}
+        title={disabled ? "The voice cart is active. Ask Jhola, or switch back to the tap cart." : undefined}
+        className={`${h} w-full rounded-lg border px-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50`}
         style={{ borderColor: ORANGE, color: "#b35c00", background: "#fff8ec" }}
         aria-label={`Add ${label}`}
       >
@@ -112,20 +137,20 @@ function Stepper({ qty, onChange, label, size = "md" }: { qty: number; onChange:
     );
   return (
     <div className={`${h} flex w-full items-center justify-between rounded-lg text-sm font-bold`} style={{ background: ORANGE, color: NAVY }}>
-      <button type="button" onClick={() => onChange(qty - 1)} className="flex h-full w-8 items-center justify-center" aria-label={`Remove one ${label}`}>
+      <button type="button" disabled={disabled} onClick={() => onChange(qty - 1)} className="flex h-full w-8 items-center justify-center disabled:opacity-40" aria-label={`Remove one ${label}`}>
         <Minus className="h-4 w-4" aria-hidden />
       </button>
       <span aria-live="polite" aria-label={`${qty} in cart`}>
         {qty}
       </span>
-      <button type="button" onClick={() => onChange(qty + 1)} className="flex h-full w-8 items-center justify-center" aria-label={`Add one more ${label}`}>
+      <button type="button" disabled={disabled} onClick={() => onChange(qty + 1)} className="flex h-full w-8 items-center justify-center disabled:opacity-40" aria-label={`Add one more ${label}`}>
         <Plus className="h-4 w-4" aria-hidden />
       </button>
     </div>
   );
 }
 
-function ProductCard({ p, qty, setQty, role, memberLabel, usual }: { p: Product; qty: number; setQty: (q: number) => void; role: Role; memberLabel: string; usual: boolean }) {
+function ProductCard({ p, qty, setQty, role, memberLabel, usual, locked }: { p: Product; qty: number; setQty: (q: number) => void; role: Role; memberLabel: string; usual: boolean; locked: boolean }) {
   const cat = catFor(p.category);
   const Icon = cat.icon;
   const off = p.mrp_inr > p.price_inr ? Math.round(((p.mrp_inr - p.price_inr) / p.mrp_inr) * 100) : 0;
@@ -170,7 +195,7 @@ function ProductCard({ p, qty, setQty, role, memberLabel, usual }: { p: Product;
         </p>
       ) : null}
       <div className="mt-auto pt-2">
-        {p.in_stock ? <Stepper qty={qty} onChange={setQty} label={label} /> : <p className="py-1.5 text-center text-xs font-semibold text-[#565959]">Out of stock</p>}
+        {p.in_stock ? <Stepper qty={qty} onChange={setQty} label={label} disabled={locked} /> : <p className="py-1.5 text-center text-xs font-semibold text-[#565959]">Out of stock</p>}
         <a
           href={p.amazon_search_url}
           target="_blank"
@@ -199,6 +224,11 @@ function JholaPanel({
   parchiBusy,
   error,
   thinking,
+  voiceSlot,
+  voiceOn,
+  voiceOutcome,
+  voiceOrder,
+  onLeaveVoice,
 }: {
   member: (typeof MEMBERS)[number];
   setMember: (m: ChatMember) => void;
@@ -211,6 +241,11 @@ function JholaPanel({
   parchiBusy: boolean;
   error: string | null;
   thinking: string | null;
+  voiceSlot: ReactNode;
+  voiceOn: boolean;
+  voiceOutcome: VoiceDecisions | null;
+  voiceOrder: VoiceOrder | null;
+  onLeaveVoice: () => void;
 }) {
   const allowedTotal = lines.filter((l) => l.check.decision === "allow").reduce((s, l) => s + l.p.price_inr * l.qty, 0);
   const pay = checkPayment(member.role, allowedTotal, {
@@ -219,6 +254,12 @@ function JholaPanel({
     house_help_daily_cap_inr: MANDATE.house_help_daily_cap_inr,
   });
   const fileRef = useRef<HTMLInputElement>(null);
+  if (voiceOn && voiceOutcome) {
+    const o = voiceOutcome.checkout_outcome;
+    pay.outcome = o === "auto_pay" ? "auto_pay" : o === "needs_approval" ? "needs_approval" : o === "empty" ? "empty" : "blocked";
+    pay.policy_ids = voiceOutcome.why?.policy_ids ?? (o === "needs_approval" ? ["approval-above-threshold"] : []);
+    pay.reason = voiceOutcome.why?.reasons?.join(" ") || (o === "auto_pay" ? "Within the mandate and auto-pay limits." : o === "all_lines_blocked" ? "Every line was blocked by the household rules." : pay.reason);
+  }
 
   return (
     <div className="space-y-3 text-ink">
@@ -262,8 +303,26 @@ function JholaPanel({
         <p className="mt-1 text-[11px] text-ink-soft">of {rs(MANDATE.monthly_cap_inr)} this month</p>
       </div>
 
+      <div id="voice" className="scroll-mt-36">
+        {voiceSlot}
+        <p className="mt-1.5 text-[11px] leading-snug text-ink-soft">
+          You can also say: &ldquo;Do packet doodh aur paneer add karo&rdquo;, &ldquo;Paneer mein kitna protein hai?&rdquo;, &ldquo;Order kar do&rdquo;.
+        </p>
+      </div>
+
+      {voiceOn ? (
+        <p className="flex flex-wrap items-center gap-2 rounded-xl border border-leaf/30 bg-leaf-soft px-3 py-2 text-xs text-leaf">
+          <span className="min-w-0 flex-1 font-semibold">Voice cart is active. It lives on the Jhola server and is shown below.</span>
+          <button type="button" onClick={onLeaveVoice} className="rounded-full border border-leaf/40 bg-paper px-2.5 py-1 font-semibold text-ink hover:border-ink/50">
+            Back to tap cart
+          </button>
+        </p>
+      ) : null}
+
       <div>
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-jute">Live Cedar check</p>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-jute">
+          Live Cedar check{voiceOn ? (voiceOutcome ? " (from Jhola, by voice)" : " (preview)") : ""}
+        </p>
         {lines.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-sm text-ink-soft">Add items to see what {member.label} is allowed to buy.</p>
         ) : (
@@ -319,9 +378,13 @@ function JholaPanel({
         <span className="font-display text-xl font-semibold tabular-nums">{rs(allowedTotal)}</span>
       </div>
 
+      {voiceOn ? (
+        <p className="rounded-full border border-ink/20 bg-paper px-4 py-2.5 text-center text-sm font-semibold">Say &ldquo;Order kar do&rdquo; to check out by voice</p>
+      ) : null}
       <button
         type="button"
         onClick={onCheckout}
+        hidden={voiceOn}
         disabled={checkingOut || lines.length === 0}
         className="flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50"
         style={{ background: "#ffd814", color: NAVY }}
@@ -355,6 +418,34 @@ function JholaPanel({
         </p>
       ) : null}
 
+      {voiceOrder ? (
+        <div className="rounded-xl border border-line bg-paper p-3 text-sm" aria-live="polite">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-jute">Voice order</p>
+          <p className="mt-1">
+            {voiceOrder.order_id ? <span className="font-mono">{voiceOrder.order_id}</span> : "Order"} is{" "}
+            <strong>{voiceOrder.status.replace(/_/g, " ")}</strong>
+            {voiceOrder.payment ? `. ${rs(voiceOrder.payment.amount_inr)} paid, UPI ref ${voiceOrder.payment.upi_ref} (simulated)` : ""}.
+          </p>
+          {(voiceOrder.needs_approval_because?.reasons ?? voiceOrder.deny?.reasons ?? []).map((r) => (
+            <p key={r} className="mt-1 text-xs text-ink-soft">{r}</p>
+          ))}
+          {(voiceOrder.blocked_lines ?? []).map((b) => (
+            <p key={b.label} className="mt-1 text-xs text-terracotta">
+              Blocked: {b.label} x{b.qty}. {b.reasons.join(" ")}
+            </p>
+          ))}
+          {(voiceOrder.notifications ?? []).map((n, i) => (
+            <p key={i} className="mt-2 rounded-lg bg-turmeric-soft px-2 py-1 text-xs">
+              [Sent to {n.to}] {n.text}
+            </p>
+          ))}
+          {voiceOrder.order_id ? (
+            <Link href={`/console/audit?order=${encodeURIComponent(voiceOrder.order_id)}`} className="mt-2 inline-block text-xs font-semibold underline underline-offset-2">
+              See the audit trail
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       {(checkingOut || parchiBusy) && thinking ? (
         <p role="status" className="rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink-soft">
           Jhola is thinking. {thinking}
@@ -387,10 +478,10 @@ function JholaPanel({
   );
 }
 
-function Drawer({ open, onClose, title, children, side = "right" }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "right" | "bottom" }) {
-  if (!open) return null;
+function Drawer({ open, onClose, title, children, side = "right", keepMounted = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "right" | "bottom"; keepMounted?: boolean }) {
+  if (!open && !keepMounted) return null;
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
+    <div className={`fixed inset-0 z-50 ${open ? "" : "hidden"}`} role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
       <div
         className={
@@ -402,7 +493,7 @@ function Drawer({ open, onClose, title, children, side = "right" }: { open: bool
       >
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <p className="font-display text-lg font-semibold">{title}</p>
-          <button type="button" onClick={onClose} className="rounded-full p-1.5 hover:bg-sand" aria-label="Close" autoFocus>
+          <button type="button" onClick={onClose} className="rounded-full p-1.5 hover:bg-sand" aria-label="Close" autoFocus={!keepMounted}>
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
@@ -429,6 +520,23 @@ export default function StoreView() {
   const [thinking, setThinking] = useState<string | null>(null);
   const [sessionId] = useState(() => `web-store-${Math.random().toString(36).slice(2, 8)}`);
 
+  const [voiceCart, setVoiceCart] = useState<VoiceCart | null>(null);
+  const [voiceDecisions, setVoiceDecisions] = useState<VoiceDecisions | null>(null);
+  const [voiceOrder, setVoiceOrder] = useState<VoiceOrder | null>(null);
+  const isDesktop = useIsDesktop();
+  // The server-side voice cart takes over as soon as it holds something.
+  const voiceOn = (voiceCart?.lines.length ?? 0) > 0;
+
+  // /store#voice (from the landing page) opens the Jhola sheet on mobile.
+  useEffect(() => {
+    if (window.location.hash !== "#voice") return;
+    const t = setTimeout(() => {
+      if (window.matchMedia(DESKTOP).matches) document.getElementById("voice")?.scrollIntoView({ block: "center" });
+      else setPanelOpen(true);
+    }, 300);
+    return () => clearTimeout(t);
+  }, []);
+
   const member = MEMBERS.find((m) => m.id === memberId)!;
   const household = usePolling(() => api.household(), 10000);
   const remaining = household.data?.mandate.remaining_inr ?? MANDATE.monthly_cap_inr;
@@ -445,13 +553,24 @@ export default function StoreView() {
 
   const lines: Line[] = useMemo(
     () =>
-      Object.entries(cart)
+      voiceCart && voiceCart.lines.length > 0
+        ? voiceCart.lines.map((vl) => {
+            const p: Product =
+              BY_ID.get(vl.sku) ??
+              ({ ...CATALOG[0], id: vl.sku, name: vl.name || vl.label, brand: vl.brand, category: vl.category, price_inr: vl.unit_price_inr, mrp_inr: vl.unit_price_inr } as Product);
+            const d = voiceDecisions?.lines.find((x) => x.sku === vl.sku);
+            const check = d
+              ? { decision: d.allowed ? ("allow" as const) : ("deny" as const), policy_ids: d.policy_ids, reason: d.reasons.join(" ") }
+              : checkItem(member.role, p, vl.qty);
+            return { p, qty: vl.qty, check };
+          })
+        : Object.entries(cart)
         .filter(([, q]) => q > 0)
         .map(([id, qty]) => {
           const p = BY_ID.get(id)!;
           return { p, qty, check: checkItem(member.role, p, qty) };
         }),
-    [cart, member.role],
+    [cart, member.role, voiceCart, voiceDecisions],
   );
   const count = lines.reduce((s, l) => s + l.qty, 0);
   const subtotal = lines.reduce((s, l) => s + l.p.price_inr * l.qty, 0);
@@ -506,10 +625,42 @@ export default function StoreView() {
     }
   }
 
+  const leaveVoice = () => {
+    setVoiceCart(null);
+    setVoiceDecisions(null);
+  };
+  const voiceSlot = VOICE_WSS ? (
+    <JholaVoiceAssistant
+      key={memberId}
+      apiUrl={VOICE_WSS}
+      member={memberId}
+      className="!border-line !bg-paper"
+      onCartUpdate={(c) => {
+        setVoiceCart(c);
+        setVoiceDecisions(null);
+      }}
+      onDecisions={(d) => setVoiceDecisions(d)}
+      onOrder={(o) => {
+        setVoiceOrder(o);
+        household.refresh();
+      }}
+    />
+  ) : (
+    <p className="rounded-2xl border border-dashed border-line px-3 py-3 text-center text-sm text-ink-soft">Talk to Jhola: live voice is not configured on this deployment.</p>
+  );
   const panel = (
     <JholaPanel
+      voiceSlot={voiceSlot}
+      voiceOn={voiceOn}
+      voiceOutcome={voiceDecisions}
+      voiceOrder={voiceOrder}
+      onLeaveVoice={leaveVoice}
       member={member}
-      setMember={setMemberId}
+      setMember={(m) => {
+        leaveVoice();
+        setVoiceOrder(null);
+        setMemberId(m);
+      }}
       lines={lines}
       remaining={remaining}
       onCheckout={checkout}
@@ -625,11 +776,12 @@ export default function StoreView() {
                 <ProductCard
                   key={p.id}
                   p={p}
-                  qty={cart[p.id] ?? 0}
+                  qty={voiceOn ? (voiceCart?.lines.find((l) => l.sku === p.id)?.qty ?? 0) : (cart[p.id] ?? 0)}
                   setQty={(q) => setQty(p.id, q)}
                   role={member.role}
                   memberLabel={member.label}
                   usual={usualSet.has(p.id)}
+                  locked={voiceOn}
                 />
               ))}
             </ul>
@@ -650,27 +802,31 @@ export default function StoreView() {
         </main>
 
         <aside className="hidden w-80 shrink-0 lg:block" aria-label="Jhola household agent">
-          <div className="sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-2xl border border-line bg-cream p-4 shadow-sm">{panel}</div>
+          <div className="sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-2xl border border-line bg-cream p-4 shadow-sm">{isDesktop ? panel : null}</div>
         </aside>
       </div>
 
       {/* Mobile: Jhola bar opens the panel as a bottom sheet */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-cream px-4 py-2.5 lg:hidden">
         <button type="button" onClick={() => setPanelOpen(true)} className="flex w-full items-center gap-3 text-left" aria-expanded={panelOpen}>
-          <Logo className="h-8 w-8" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-leaf text-white" aria-hidden>
+            <Mic className="h-4 w-4" />
+          </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-ink">Jhola check as {member.label}</span>
+            <span className="block text-sm font-semibold text-ink">Talk to Jhola as {member.label}</span>
             <span className="block text-xs text-ink-soft">
-              {lines.length ? `${lines.length - denied} allowed, ${denied} blocked · ${rs(subtotal)}` : "Add items to check them"}
+              {lines.length ? `${voiceOn ? "Voice cart: " : ""}${lines.length - denied} allowed, ${denied} blocked · ${rs(subtotal)}` : "Tap the mic, or add items to check them"}
             </span>
           </span>
           <ChevronUp className="h-5 w-5 text-ink" aria-hidden />
         </button>
       </div>
 
-      <Drawer open={panelOpen} onClose={() => setPanelOpen(false)} title="Jhola household agent" side="bottom">
-        {panel}
-      </Drawer>
+      {isDesktop ? null : (
+        <Drawer open={panelOpen} onClose={() => setPanelOpen(false)} title="Jhola household agent" side="bottom" keepMounted>
+          {panel}
+        </Drawer>
+      )}
 
       <Drawer open={cartOpen} onClose={() => setCartOpen(false)} title={`Cart (${count})`}>
         {lines.length === 0 ? (
@@ -698,7 +854,7 @@ export default function StoreView() {
                     </p>
                   </div>
                   <div className="w-24">
-                    <Stepper qty={l.qty} onChange={(q) => setQty(l.p.id, q)} label={`${l.p.brand} ${l.p.name}`} size="sm" />
+                    <Stepper qty={l.qty} onChange={(q) => setQty(l.p.id, q)} label={`${l.p.brand} ${l.p.name}`} size="sm" disabled={voiceOn} />
                   </div>
                 </li>
               ))}
@@ -715,11 +871,13 @@ export default function StoreView() {
                 checkout();
               }}
               disabled={checkingOut}
+              hidden={voiceOn}
               className="flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold disabled:opacity-50"
               style={{ background: "#ffd814", color: NAVY }}
             >
               <ShieldCheck className="h-4 w-4" aria-hidden /> Checkout through Jhola
             </button>
+            {voiceOn ? <p className="text-sm font-semibold">This is your voice cart. Say &ldquo;Order kar do&rdquo; to check out.</p> : null}
             <p className="text-[11px] text-ink-soft">Checkout runs the same Cedar policy gate as WhatsApp orders. Payments are simulated.</p>
           </div>
         )}

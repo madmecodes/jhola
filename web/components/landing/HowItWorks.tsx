@@ -5,7 +5,7 @@ import SectionPhoto from "./SectionPhoto";
 const steps = [
   {
     title: "Send it the way you already do",
-    body: "A photo of the handwritten parchi, a voice note, or a text. On WhatsApp, to Jhola, like you would to the shop.",
+    body: "A photo of the handwritten parchi, a voice note, or a text. On WhatsApp, to Jhola, like you would to the shop. Voice works two ways: voice notes on WhatsApp and live voice in the store.",
     note: "aata 5kg, doodh 2, dhaniya",
   },
   {

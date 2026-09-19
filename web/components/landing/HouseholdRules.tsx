@@ -45,7 +45,7 @@ const members: Member[] = [
     role: "Grandparent",
     initials: "D",
     tone: "bg-jute text-cream",
-    can: ["Groceries and medicines", "Orders by voice note in Hindi"],
+    can: ["Groceries and medicines", "Orders by voice in Hindi: voice notes on WhatsApp, live voice in the store"],
     limit: "Rs 800 / day",
     example: { text: "Monthly medicines: Rs 1,460", outcome: "approval" },
   },

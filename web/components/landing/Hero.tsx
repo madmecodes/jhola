@@ -1,7 +1,7 @@
 import Link from "next/link";
 import HeroVisual from "./HeroVisual";
 
-const inputs = ["Photo of a handwritten list", "Voice note in Hindi or English", "A quick text"];
+const inputs = ["Photo of a handwritten list", "Voice notes on WhatsApp, live voice in the store", "A quick text"];
 
 export default function Hero() {
   return (
@@ -48,6 +48,12 @@ export default function Hero() {
             >
               How it works
             </a>
+            <Link
+              href="/store#voice"
+              className="rounded-full border border-ink/25 px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-ink/60"
+            >
+              Talk to Jhola
+            </Link>
             <a
               href="#safety"
               className="rounded-full border border-ink/25 px-6 py-3 text-sm font-semibold text-ink transition-colors hover:border-ink/60"
@@ -55,7 +61,9 @@ export default function Hero() {
               Why it is safe
             </a>
           </div>
-          <p className="mt-6 text-sm text-ink-soft">Works inside WhatsApp. Nothing new to install for the family.</p>
+          <p className="mt-6 text-sm text-ink-soft">
+            Works inside WhatsApp, with voice notes on WhatsApp and live voice in the store. Nothing new to install for the family.
+          </p>
         </div>
         <HeroVisual />
       </div>

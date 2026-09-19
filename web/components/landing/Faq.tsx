@@ -7,7 +7,7 @@ const faqs = [
   },
   {
     q: "Can Jhola read handwriting in Hindi and English?",
-    a: "Yes, that is the point. Lists often mix both, like \"aata 5kg, धनिया, doodh 2\". Jhola also understands voice notes and plain text.",
+    a: "Yes, that is the point. Lists often mix both, like \"aata 5kg, धनिया, doodh 2\". Jhola also understands plain text, voice notes on WhatsApp and live voice in the store.",
   },
   {
     q: "What stops someone from buying something they should not?",
