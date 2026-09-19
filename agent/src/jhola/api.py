@@ -17,17 +17,19 @@ from typing import Any, Callable, Protocol
 
 from . import rules as rules_mod
 from .agent import JholaAgent
+from .admin import limits_text
 from .config import Clock
-from .domain import Member
+from .domain import DEMO_HOUSEHOLD_ID, Member
+from .household import Directory
 from .orders import Jhola
+from .phones import mask_phone, mask_phones  # noqa: F401  (re-exported)
 from .redteam import ATTACKS, run_attack
 from .store import Repository
 
 MAX_TEXT = 1000
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
-WEB_MEMBERS = ("didi", "teen", "dad", "mom")
 WINDOW_S = 24 * 3600 - 300  # WhatsApp customer-service window, with a 5 minute margin
-PHONE_RE = re.compile(r"\+?\d{10,13}")
+HOUSEHOLD_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
 
 
 class ApiError(Exception):
@@ -35,18 +37,6 @@ class ApiError(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
-
-
-def mask_phone(p: str | None) -> str:
-    digits = re.sub(r"\D", "", p or "")
-    if len(digits) < 6:
-        return ""
-    return f"+{digits[:2]}******{digits[-4:]}"
-
-
-def mask_phones(obj: Any) -> Any:
-    """Mask phone numbers anywhere in a JSON-able value (audit events carry sender phones)."""
-    return json.loads(PHONE_RE.sub(lambda m: mask_phone(m.group(0)), json.dumps(obj, ensure_ascii=False)))
 
 
 LIMITS = {
@@ -137,11 +127,17 @@ class ConsoleApi:
         self._admin_phone = admin_phone
 
     # ---------- plumbing ----------
-    def app(self) -> Jhola:
-        return Jhola(self.repo, self.clock)
+    def app(self, household_id: str | None = None) -> Jhola:
+        """The service container of one household (default: the demo Gupta family)."""
+        hid = household_id or DEMO_HOUSEHOLD_ID
+        if not HOUSEHOLD_ID_RE.match(hid):
+            raise ApiError(400, "bad household_id")
+        if hid != DEMO_HOUSEHOLD_ID and Directory(self.repo, self.clock).profile(hid) is None:
+            raise ApiError(404, f"no household {hid}")
+        return Jhola(self.repo, self.clock, household_id=hid)
 
     def agent(self, app: Jhola | None = None) -> JholaAgent:
-        return JholaAgent(app or self.app(), self.model_factory, self.vision)
+        return JholaAgent(app or self.app(), self.model_factory, self.vision, self.llm)
 
     def now(self) -> str:
         return self.clock.now().isoformat()
@@ -191,21 +187,48 @@ class ConsoleApi:
         ]
 
     # ---------- GET ----------
-    def household(self) -> dict:
-        app = self.app()
+    def households(self) -> dict:
+        """Every household with member counts. Phones are masked; demo-key guarded."""
+        d = Directory(self.repo, self.clock)
+        d.ensure_demo()
+        out = []
+        for h in d.list_households():
+            ms = h["members"]
+            out.append({
+                "household_id": h["household_id"], "name": h.get("name"), "demo": bool(h.get("demo")),
+                "created_at": h.get("created_at"), "member_count": len(ms),
+                "admins": [mask_phone(m.get("phone")) for m in ms if m.get("role") == "admin"],
+                "members": [{"id": m["id"], "display": m.get("display"), "role": m.get("role"),
+                             "phone_masked": mask_phone(m.get("phone"))} for m in ms],
+                "monthly_cap_inr": (h.get("mandate") or {}).get("monthly_cap_inr"),
+            })
+        return {"households": out}
+
+    def household(self, household_id: str | None = None) -> dict:
+        from .policy import format_reason
+
+        app = self.app(household_id)
         md = app.hh.mandate
+
+        def summary(m: Member) -> str:
+            if app.hh.demo and not (m.daily_cap_inr or m.order_cap_inr or m.allowed_categories or m.delegation):
+                return LIMITS.get(m.role, "").format(thr=md["per_payment_approval_above_inr"],
+                                                     daily=md["house_help_daily_cap_inr"])
+            return limits_text(m, app.hh)
+
         members = [{"id": m.id, "name": m.name, "display": m.display, "role": m.role,
-                    "phone_masked": mask_phone(m.phone),
-                    "limits_summary": LIMITS.get(m.role, "").format(thr=md["per_payment_approval_above_inr"],
-                                                                    daily=md["house_help_daily_cap_inr"])}
-                   for m in app.hh.members]
-        rules = [{**r, "active": True} for r in rules_mod.base_rules()]
+                    "phone_masked": mask_phone(m.phone), "limits_summary": summary(m)} for m in app.hh.members]
+        rules = [{**r, "title_en": format_reason(r["title_en"], app.hh),
+                  "title_hinglish": format_reason(r["title_hinglish"], app.hh), "active": True}
+                 for r in rules_mod.base_rules()]
         rules += [{"id": r["id"], "title_en": r["title"], "title_hinglish": r.get("title_hinglish", ""),
-                   "cedar": r["cedar"], "source": "custom", "active": True, "created_at": r.get("created_at")}
-                  for r in rules_mod.custom_rules(self.repo)]
+                   "cedar": r.get("cedar", ""), "source": "custom", "kind": r.get("kind", "rule"), "active": True,
+                   "expires_on": r.get("expires_on"), "created_at": r.get("created_at")}
+                  for r in rules_mod.custom_rules(app.repo)]
         m = app.upi.get(app.mandate_id)
         return {
-            "household": {"name": app.hh.name, "city": app.hh.raw.get("city")},
+            "household": {"household_id": app.hh.id, "name": app.hh.name, "city": app.hh.raw.get("city"),
+                          "demo": app.hh.demo},
             "members": members,
             "rules": rules,
             "mandate": {"cap_inr": m["monthly_cap_inr"], "used_inr": m["month_spent_inr"],
@@ -215,46 +238,48 @@ class ConsoleApi:
                         "house_help_daily_cap_inr": md["house_help_daily_cap_inr"]},
         }
 
-    def orders(self, limit: int = 20) -> dict:
-        app = self.app()
-        orders = sorted(self.repo.list("orders"), key=lambda o: (o.get("created_at", ""), o["order_id"]),
+    def orders(self, limit: int = 20, household_id: str | None = None) -> dict:
+        app = self.app(household_id)
+        orders = sorted(app.repo.list("orders"), key=lambda o: (o.get("created_at", ""), o["order_id"]),
                         reverse=True)
         orders = [o for o in orders if o.get("status") != "draft"][: max(1, min(limit, 100))]
         return {"orders": [self.format_order(app, o) for o in orders]}
 
-    def audit(self, order_id: str | None = None, limit: int = 100) -> dict:
+    def audit(self, order_id: str | None = None, limit: int = 100, household_id: str | None = None) -> dict:
         limit = max(1, min(limit, 500))
+        repo = self.app(household_id).repo
         if order_id:
-            evs = [e for e in self.repo.recent("audit", 3000) if e.get("order_id") == order_id][-limit:]
+            evs = [e for e in repo.recent("audit", 3000) if e.get("order_id") == order_id][-limit:]
         else:
-            evs = self.repo.recent("audit", limit)
+            evs = repo.recent("audit", limit)
         evs.sort(key=lambda e: e.get("seq", 0))
         return {"events": [self.format_event(e) for e in evs]}
 
-    def approvals(self) -> dict:
-        app = self.app()
-        pending = sorted((o for o in self.repo.list("orders") if o.get("status") == "pending_approval"),
-                         key=lambda o: o.get("created_at", ""), reverse=True)
+    def approvals(self, household_id: str | None = None) -> dict:
+        app = self.app(household_id)
+        pending = app.pending_approvals()[::-1]
         return {"pending": [
-            {"order_id": o["order_id"], "member_name": app.hh.member(o["member_id"]).display,
+            {"order_id": o["order_id"], "member_name": app.hh.display_of(o["member_id"]),
              "total_inr": o.get("payable_inr", o.get("total_inr")), "items_count": sum(
                  1 for l in o["lines"] if l.get("allowed")), "created_at": o.get("created_at"),
              "reasons": (o.get("approval_reasons") or {}).get("reasons", [])}
             for o in pending]}
 
-    def job(self, job_id: str) -> dict:
+    def job(self, job_id: str, keyed: bool = False) -> dict:
         j = self.repo.get("web_jobs", job_id)
         if not j:
             raise ApiError(404, "no such job")
+        if (j.get("input") or {}).get("household_id", DEMO_HOUSEHOLD_ID) != DEMO_HOUSEHOLD_ID and not keyed:
+            raise ApiError(401, "missing or wrong x-jhola-demo-key")
         return {"job_id": job_id, "kind": j.get("kind"), "status": j.get("status"), "result": j.get("result"),
                 "error": j.get("error")}
 
     # ---------- approvals ----------
-    def decide(self, order_id: str, body: dict) -> dict:
+    def decide(self, order_id: str, body: dict, household_id: str | None = None) -> dict:
         decision = str(body.get("decision", "")).lower()
         if decision not in ("approve", "reject"):
             raise ApiError(400, "decision must be approve or reject")
-        app = self.app()
+        app = self.app(household_id)
         o = app.get_order(order_id)
         if not o:
             raise ApiError(404, f"no such order {order_id}")
@@ -268,10 +293,11 @@ class ConsoleApi:
         return self.format_order(app, app.get_order(order_id))
 
     # ---------- chat ----------
-    def chat(self, body: dict, client_id: str = "") -> dict:
+    def chat(self, body: dict, client_id: str = "", household_id: str | None = None) -> dict:
         member = str(body.get("member", "")).lower()
-        if member not in WEB_MEMBERS:
-            raise ApiError(400, f"member must be one of {', '.join(WEB_MEMBERS)}")
+        ids = [m.id for m in self.app(household_id).hh.members]
+        if member not in ids:
+            raise ApiError(400, f"member must be one of {', '.join(ids)}")
         text = body.get("text")
         if text is not None and not isinstance(text, str):
             raise ApiError(400, "text must be a string")
@@ -296,11 +322,12 @@ class ConsoleApi:
             raise ApiError(400, "send text, image_base64 or button_id")
         session = re.sub(r"[^A-Za-z0-9_-]", "", str(body.get("session_id") or client_id))[:64] or "anon"
         payload = {"member": member, "text": text, "button_id": button_id, "image_base64": image_b64,
-                   "media_type": body.get("media_type") or "image/jpeg", "session": session}
+                   "media_type": body.get("media_type") or "image/jpeg", "session": session,
+                   "household_id": household_id or DEMO_HOUSEHOLD_ID}
         return self.deferrer.run("chat", payload)
 
     def _run_chat(self, p: dict) -> dict:
-        app = self.app()
+        app = self.app(p.get("household_id"))
         agent = self.agent(app)
         member: Member = app.hh.member(p["member"])
         if p.get("button_id"):
@@ -322,41 +349,46 @@ class ConsoleApi:
         return out
 
     # ---------- rules ----------
-    def rules_draft(self, body: dict) -> dict:
+    def rules_draft(self, body: dict, household_id: str | None = None) -> dict:
         text = str(body.get("text") or "").strip()
         if not text:
             raise ApiError(400, "text is required")
         if len(text) > MAX_TEXT:
             raise ApiError(400, f"text longer than {MAX_TEXT} characters")
-        return self.deferrer.run("rules_draft", {"text": text})
+        self.app(household_id)  # 404 for an unknown household
+        return self.deferrer.run("rules_draft", {"text": text, "household_id": household_id or DEMO_HOUSEHOLD_ID})
 
-    def rules_activate(self, body: dict) -> dict:
+    def rules_activate(self, body: dict, household_id: str | None = None) -> dict:
         cedar = str(body.get("cedar") or "")
         title = str(body.get("title") or "").strip()
         if not cedar.strip() or not title:
             raise ApiError(400, "cedar and title are required")
-        res = rules_mod.activate(self.repo, cedar, title, self.now(), str(body.get("title_hinglish") or ""),
+        app = self.app(household_id)
+        res = rules_mod.activate(app.repo, cedar, title, self.now(), str(body.get("title_hinglish") or ""),
                                  str(body.get("explanation_en") or ""))
         if not res["ok"]:
             raise ApiError(422, "; ".join(res["validation"]["errors"]) or "invalid policy")
         r = res["rule"]
-        self.app().audit.log("rule_activated", actor="console", rule_id=r["id"], title=r["title"], cedar=r["cedar"])
+        app.audit.log("rule_activated", actor="console", rule_id=r["id"], title=r["title"], cedar=r["cedar"])
         return {"ok": True, "rule": {"id": r["id"], "title_en": r["title"], "title_hinglish": r["title_hinglish"],
                                      "cedar": r["cedar"], "source": "custom", "active": True,
                                      "created_at": r["created_at"]}}
 
-    def rules_delete(self, rule_id: str) -> dict:
-        r = rules_mod.deactivate(self.repo, rule_id, self.now())
+    def rules_delete(self, rule_id: str, household_id: str | None = None) -> dict:
+        app = self.app(household_id)
+        r = rules_mod.deactivate(app.repo, rule_id, self.now())
         if not r:
             raise ApiError(404, f"no custom rule {rule_id}")
-        self.app().audit.log("rule_deactivated", actor="console", rule_id=rule_id, title=r["title"])
+        app.audit.log("rule_deactivated", actor="console", rule_id=rule_id, title=r["title"])
         return {"ok": True, "rule": {"id": r["id"], "title_en": r["title"], "source": "custom", "active": False}}
 
     # ---------- red team ----------
-    def redteam(self, body: dict) -> dict:
+    def redteam(self, body: dict, household_id: str | None = None) -> dict:
         attack = str(body.get("attack") or "")
         if attack not in ATTACKS:
             raise ApiError(400, f"attack must be one of {', '.join(ATTACKS)}")
+        if (household_id or DEMO_HOUSEHOLD_ID) != DEMO_HOUSEHOLD_ID:
+            raise ApiError(400, "the red team attacks are scripted for the demo household")
         app = self.app()
         res = run_attack(app, attack)
         app.audit.log("redteam_run", actor="console", attack=attack, verdict=res["verdict"], sandbox=True,
@@ -366,25 +398,40 @@ class ConsoleApi:
 
     # ---------- weekly refill ----------
     def admin_phone(self, app: Jhola) -> str:
-        return self._admin_phone or app.hh.admins()[0].phone
+        if self._admin_phone and app.hh.demo:
+            return self._admin_phone
+        return app.hh.admins()[0].phone
 
     def last_inbound(self, phone: str) -> int | None:
         """Unix time of the admin's last WhatsApp message (starts the 24-hour window)."""
         doc = self.repo.get("wa_last_inbound", phone)
-        if doc:
-            return int(doc["at"])
-        from datetime import datetime
+        return int(doc["at"]) if doc else None
 
-        # Fallback for messages before tracking existed: WhatsApp conversation history (not web sessions).
-        ts = [s["updated_at"] for s in self.repo.list("sessions")
-              if s.get("updated_at") and not str(s.get("key", "")).startswith("web:")]
-        return int(max(datetime.fromisoformat(t).timestamp() for t in ts)) if ts else None
+    def refill_run(self, body: dict, household_id: str | None = None) -> dict:
+        self.app(household_id)
+        return self.deferrer.run("refill", {"send": bool(body.get("send", True)),
+                                            "household_id": household_id or DEMO_HOUSEHOLD_ID})
 
-    def refill_run(self, body: dict) -> dict:
-        return self.deferrer.run("refill", {"send": bool(body.get("send", True))})
+    def refill_all(self) -> list[dict]:
+        """The Sunday schedule: every household that has something running out gets a proposal."""
+        d = Directory(self.repo, self.clock)
+        d.ensure_demo()
+        out = []
+        for h in d.list_households():
+            hid = h["household_id"]
+            try:
+                app = self.app(hid)
+                if not app.hh.admins() or not app.pantry.predict_refill(app.clock.today()):
+                    continue
+                res = self._run_refill({"send": True, "household_id": hid})
+                out.append({"household_id": hid, "sent": res.get("sent"), "skipped": res.get("skipped"),
+                            "model": res.get("model")})
+            except Exception as e:  # noqa: BLE001  one household must not stop the others
+                out.append({"household_id": hid, "error": f"{type(e).__name__}: {e}"[:200]})
+        return out
 
     def _run_refill(self, p: dict) -> dict:
-        app = self.app()
+        app = self.app(p.get("household_id"))
         send = p.get("send", True)
         phone = self.admin_phone(app)
         if send:
@@ -422,9 +469,10 @@ class ConsoleApi:
     def demo_reset(self) -> dict:
         from .whatsapp import reset_demo
 
-        reset_demo(self.repo)  # orders, txns, purchases, mandate, sessions; never demo_acting (persona)
-        for c in ("audit", "web_jobs"):
-            self.repo.delete_collection(c)
+        scoped = Directory(self.repo, self.clock).scoped(DEMO_HOUSEHOLD_ID)
+        reset_demo(scoped)  # orders, txns, purchases, mandate, sessions, learned brands; never the persona
+        scoped.delete_collection("audit")
+        self.repo.delete_collection("web_jobs")
         app = self.app()  # recreates the mandate at the seeded usage
         app.audit.log("demo_reset", actor="console")
         return {"ok": True, "mandate_used_inr": app.month_spent()}
@@ -434,7 +482,8 @@ class ConsoleApi:
         if kind == "chat":
             return self._run_chat(payload)
         if kind == "rules_draft":
-            return rules_mod.draft_rule(payload["text"], self.llm)
+            app = self.app(payload.get("household_id"))
+            return rules_mod.draft_rule(payload["text"], self.llm, household=app.hh, today=app.today_int())
         if kind == "refill":
             return self._run_refill(payload)
         raise ApiError(400, f"unknown job {kind}")

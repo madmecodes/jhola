@@ -24,6 +24,7 @@ import time
 from typing import Any, Callable
 
 from .api import ApiError, ConsoleApi, new_job_id
+from .domain import DEMO_HOUSEHOLD_ID
 from .store import DynamoDBRepository, Repository
 
 logging.getLogger().setLevel(logging.INFO)
@@ -156,6 +157,7 @@ def run_web_job(api: ConsoleApi, repo: Repository, job_id: str, bucket: str | No
 # ---------- routing ----------
 Route = tuple[str, re.Pattern, str, str]  # method, path regex, handler name, access
 ROUTES: list[Route] = [
+    ("GET", re.compile(r"^/api/households$"), "households", "key"),
     ("GET", re.compile(r"^/api/household$"), "household", "read"),
     ("GET", re.compile(r"^/api/orders$"), "orders", "read"),
     ("GET", re.compile(r"^/api/audit$"), "audit", "read"),
@@ -190,7 +192,13 @@ def dispatch(api: ConsoleApi, method: str, path: str, query: dict, headers: dict
         if m != method:
             allowed_methods.append(m)
             continue
-        if access == "key":
+        # Every route takes an optional household_id (query string or body); the default is the public
+        # demo household. Any other household's data is only served with the demo key.
+        hid = str(query.get("household_id") or body.get("household_id") or "") or None
+        keyed = access == "key" or (hid is not None and hid != DEMO_HOUSEHOLD_ID)
+        if name == "job" and headers.get("x-jhola-demo-key"):
+            keyed = True
+        if keyed:
             key_check(headers)
         elif limiter is not None:
             limit = int(os.environ.get("JHOLA_RATE_READ" if access == "read" else "JHOLA_RATE_WRITE",
@@ -199,20 +207,22 @@ def dispatch(api: ConsoleApi, method: str, path: str, query: dict, headers: dict
                 raise ApiError(429, "rate limit exceeded, try again in a minute")
         rid = match.groupdict().get("id")
         if name == "orders":
-            return api.orders(_int(query, "limit", 20))
+            return api.orders(_int(query, "limit", 20), household_id=hid)
         if name == "audit":
-            return api.audit(query.get("order_id") or None, _int(query, "limit", 100))
+            return api.audit(query.get("order_id") or None, _int(query, "limit", 100), household_id=hid)
         if name == "job":
-            return api.job(rid)
+            return api.job(rid, keyed=keyed)
         if name == "decide":
-            return api.decide(rid, body)
+            return api.decide(rid, body, household_id=hid)
         if name == "rules_delete":
-            return api.rules_delete(rid)
+            return api.rules_delete(rid, household_id=hid)
         if name in ("chat",):
-            return api.chat(body, client_id=hashlib.sha256(ip.encode()).hexdigest()[:16])
-        if name in ("household", "approvals", "demo_reset"):
+            return api.chat(body, client_id=hashlib.sha256(ip.encode()).hexdigest()[:16], household_id=hid)
+        if name in ("household", "approvals"):
+            return getattr(api, name)(household_id=hid)
+        if name in ("households", "demo_reset"):
             return getattr(api, name)()
-        return getattr(api, name)(body)
+        return getattr(api, name)(body, household_id=hid)
     if allowed_methods:
         raise ApiError(405, "method not allowed")
     raise ApiError(404, "not found")
@@ -291,7 +301,7 @@ def handler(event: dict, context: Any = None) -> dict:
         return run_web_job(api, repo, event["job_id"], os.environ.get("JHOLA_MEDIA_BUCKET"))
     if job == "weekly_refill":
         api, _ = _api(defer=False)
-        res = api.execute_job("refill", {"send": True})
-        log.info("weekly_refill", extra={"sent": res.get("sent"), "skipped": res.get("skipped")})
-        return {k: v for k, v in res.items() if k in ("sent", "skipped", "message_ids", "model")}
+        res = api.refill_all()
+        log.info("weekly_refill", extra={"households": res})
+        return {"households": res}
     return http(event)
