@@ -24,7 +24,30 @@ import cedarpy
 from .config import POLICY_DIR
 from .domain import Household, Member
 
-HOUSEHOLD_UID = {"type": "Household", "id": "gupta"}
+
+
+def format_reason(text: str, hh: Household) -> str:
+    """Fill the {threshold} / {cap} / {daily} / {admin} placeholders used in policy annotations."""
+    md = hh.mandate
+    for k, v in (("{threshold}", md.get("per_payment_approval_above_inr")), ("{cap}", md.get("monthly_cap_inr")),
+                 ("{daily}", md.get("house_help_daily_cap_inr")), ("{admin}", hh.admin_label())):
+        text = text.replace(k, str(v))
+    return text
+
+
+def yyyymmdd(d) -> int:
+    return d.year * 10000 + d.month * 100 + d.day
+
+
+def _today(today: int | None) -> int:
+    """context.today: the caller's clock (orders pass it), else the real date in IST."""
+    if today:
+        return int(today)
+    from datetime import datetime
+
+    from .config import IST
+
+    return yyyymmdd(datetime.now(IST).date())
 
 
 @dataclass
@@ -60,11 +83,14 @@ class PolicyEngine:
         no longer validates against the schema is skipped, never half-applied.
         """
         self.hh = household
+        self.household_uid = {"type": "Household", "id": household.id}
         self.base_text = "\n".join(p.read_text() for p in sorted(policy_dir.glob("*.cedar")))
         self.schema_text = (policy_dir / "jhola.cedarschema").read_text()
         self.custom_rules = []
         texts = [self.base_text]
         for r in custom_rules or []:
+            if not r.get("cedar"):
+                continue
             res = cedarpy.validate_policies(self.base_text + "\n" + r["cedar"], self.schema_text)
             if res.validation_passed:
                 texts.append(r["cedar"])
@@ -89,14 +115,20 @@ class PolicyEngine:
 
     # ---------- entities ----------
     def _member_entity(self, m: Member) -> dict:
-        return {
-            "uid": {"type": "Member", "id": m.id},
-            "attrs": {"name": m.name, "role": m.role},
-            "parents": [HOUSEHOLD_UID],
-        }
+        attrs: dict = {"name": m.name, "role": m.role}
+        if m.daily_cap_inr is not None:
+            attrs["daily_cap_inr"] = int(m.daily_cap_inr)
+        if m.order_cap_inr is not None:
+            attrs["order_cap_inr"] = int(m.order_cap_inr)
+        if m.allowed_categories:
+            attrs["allowed_categories"] = [str(c) for c in m.allowed_categories]
+        if m.delegation:  # expiry is NOT checked here: Cedar compares delegated_until with context.today
+            attrs["delegated_cap_inr"] = int(m.delegation["cap_inr"])
+            attrs["delegated_until"] = int(m.delegation["until"])
+        return {"uid": {"type": "Member", "id": m.id}, "attrs": attrs, "parents": [self.household_uid]}
 
     def _base_entities(self, m: Member) -> list[dict]:
-        return [{"uid": HOUSEHOLD_UID, "attrs": {}, "parents": []}, self._member_entity(m)]
+        return [{"uid": self.household_uid, "attrs": {}, "parents": []}, self._member_entity(m)]
 
     def _mandate_entity(self) -> dict:
         md = self.hh.mandate
@@ -131,19 +163,20 @@ class PolicyEngine:
         ids = [str(p) for p in res.diagnostics.reasons]
         errors = [str(e) for e in res.diagnostics.errors]
         named = [self.annotations.get(i, {}).get("id", i) for i in ids]
-        reasons = [self.annotations.get(i, {}).get("reason", "") for i in ids]
-        hinglish = [self.annotations.get(i, {}).get("hinglish", "") for i in ids]
+        reasons = [format_reason(self.annotations.get(i, {}).get("reason", ""), self.hh) for i in ids]
+        hinglish = [format_reason(self.annotations.get(i, {}).get("hinglish", ""), self.hh) for i in ids]
         allowed = res.allowed
         if not allowed and not ids:
             named, reasons, hinglish = ["default-deny"], ["No policy permits this."], ["Iski permission nahi hai."]
         return Decision(action, allowed, named, reasons, hinglish, request=request, errors=errors)
 
-    def evaluate_line(self, member: Member, product: dict, quantity: int) -> Decision:
+    def evaluate_line(self, member: Member, product: dict, quantity: int, today: int | None = None) -> Decision:
         req = {
             "principal": {"type": "Member", "id": member.id},
             "action": {"type": "Action", "id": "purchase_item"},
             "resource": {"type": "Product", "id": product["id"]},
-            "context": {"quantity": int(quantity), "line_total_inr": int(quantity * product["price_inr"])},
+            "context": {"quantity": int(quantity), "line_total_inr": int(quantity * product["price_inr"]),
+                        "today": _today(today)},
         }
         return self._decide("purchase_item", req, self._base_entities(member) + [self._product_entity(product)])
 
@@ -155,6 +188,8 @@ class PolicyEngine:
         month_spent_inr: int,
         member_spent_today_inr: int,
         approver_role: str = "",
+        today: int | None = None,
+        member_spent_delegated_inr: int = 0,
     ) -> Decision:
         assert action in ("auto_pay", "request_approval", "approved_pay")
         req = {
@@ -166,6 +201,8 @@ class PolicyEngine:
                 "month_spent_inr": int(month_spent_inr),
                 "member_spent_today_inr": int(member_spent_today_inr),
                 "approver_role": approver_role,
+                "today": _today(today),
+                "member_spent_delegated_inr": int(member_spent_delegated_inr),
             },
         }
         return self._decide(action, req, self._base_entities(member) + [self._mandate_entity()])

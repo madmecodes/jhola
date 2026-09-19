@@ -8,12 +8,19 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
-from .config import DATA_DIR, ADMIN_PHONE
+from . import config
+from .config import DATA_DIR
 from .store import Repository
+
+DEMO_HOUSEHOLD_ID = "demo-gupta"
+ROLES = ("admin", "adult", "house_help", "teen", "elder")
+CATEGORIES = ("staples", "dairy", "vegetables", "fruits", "snacks", "beverages", "energy_drinks", "stationery",
+              "personal_care", "cleaning", "pooja")
+GROCERIES = ("staples", "dairy", "vegetables", "fruits")
 
 MIN_RATING = 4.0
 QTY_WORDS = {"kg", "g", "gm", "gram", "grams", "l", "ltr", "litre", "ml", "packet", "packets", "pkt",
@@ -49,6 +56,10 @@ class Catalog:
         return self.by_id.get(sku)
 
     def search(self, query: str, category: str | None = None, limit: int = 8) -> list[dict]:
+        return [it for _, _, it in self.search_scored(query, category, limit)]
+
+    def search_scored(self, query: str, category: str | None = None, limit: int = 8) -> list[tuple]:
+        """(score, relevance, item), best first. relevance ignores stock and seller rating."""
         words = [w for w in _norm(query).split() if w]
         scored = []
         for it in self.items:
@@ -75,11 +86,12 @@ class Catalog:
                 # "kothmir" / "dhaniya" mean coriander leaves, "dhaniya powder" means the powder.
                 if "powder" in hay_tags and "powder" not in words:
                     score -= 0.5
+                rel = score
                 score += 0.5 if it["in_stock"] else 0
                 score += it["seller_rating"] / 10
-                scored.append((score, it))
+                scored.append((score, rel, it))
         scored.sort(key=lambda t: -t[0])
-        return [it for _, it in scored[:limit]]
+        return scored[:limit]
 
 
 def describe(it: dict) -> str:
@@ -90,6 +102,11 @@ def suspicious(text: str) -> bool:
     return bool(INJECTION_PATTERNS.search(text or ""))
 
 
+def pref_key(query: str) -> str:
+    """Generic word a preference is stored under: "2 kg Atta" -> "atta"."""
+    return " ".join(w for w in _norm(query).split() if w not in QTY_WORDS and not w.isdigit())
+
+
 @dataclass
 class Member:
     id: str
@@ -98,45 +115,122 @@ class Member:
     role: str
     phone: str
     language: str
+    # Personal limits (per-member memory). None / empty means "the role template applies".
+    daily_cap_inr: int | None = None        # above this per day the admin must approve
+    order_cap_inr: int | None = None        # above this per order the admin must approve
+    allowed_categories: list[str] = field(default_factory=list)
+    welcomed: bool = True
+    # Active temporary delegation (filled by Jhola from the rules collection), enforced by Cedar
+    # through context.today: {"cap_inr", "starts_on", "until"}.
+    delegation: dict | None = None
+
+    @classmethod
+    def from_doc(cls, m: dict) -> "Member":
+        phone = config.ADMIN_PHONE if m.get("phone") == "ADMIN_PHONE_PLACEHOLDER" else m.get("phone", "")
+        return cls(m["id"], m["name"], m.get("display") or m["name"], m["role"], phone,
+                   m.get("language", "hinglish"), m.get("daily_cap_inr"), m.get("order_cap_inr"),
+                   list(m.get("allowed_categories") or []), bool(m.get("welcomed", True)))
+
+    def to_doc(self) -> dict:
+        return {"id": self.id, "name": self.name, "display": self.display, "role": self.role, "phone": self.phone,
+                "language": self.language, "daily_cap_inr": self.daily_cap_inr, "order_cap_inr": self.order_cap_inr,
+                "allowed_categories": self.allowed_categories, "welcomed": self.welcomed}
+
+
+def demo_household_raw() -> dict:
+    raw = json.loads((DATA_DIR / "household.json").read_text())
+    raw["household_id"] = DEMO_HOUSEHOLD_ID
+    raw["demo"] = True
+    return raw
 
 
 class Household:
+    """One household: profile, members, mandate settings and learned preferences.
+
+    raw: {household_id, name, city?, demo?, members[], mandate{}, preferences{}, purchase_history[]?}
+    repo: the household's scoped repository (purchases and learned preferences are written there).
+    """
+
     def __init__(self, raw: dict, repo: Repository) -> None:
         self.raw = raw
         self.repo = repo
         self.id = raw["household_id"]
         self.name = raw["name"]
-        self.members = []
-        for m in raw["members"]:
-            phone = ADMIN_PHONE if m["phone"] == "ADMIN_PHONE_PLACEHOLDER" else m["phone"]
-            self.members.append(Member(m["id"], m["name"], m["display"], m["role"], phone, m["language"]))
+        self.demo = bool(raw.get("demo"))
+        self.members = [Member.from_doc(m) for m in raw["members"]]
         self.mandate = raw["mandate"]
-        self.preferences: dict[str, dict] = raw["preferences"]
+        self.preferences: dict[str, dict] = dict(raw.get("preferences") or {})
 
     @classmethod
-    def load(cls, repo: Repository, path: Path = DATA_DIR / "household.json") -> "Household":
-        return cls(json.loads(path.read_text()), repo)
+    def load(cls, repo: Repository, path: Path | None = None) -> "Household":
+        """The seeded demo household (Gupta family) straight from the data file."""
+        raw = json.loads(path.read_text()) if path else demo_household_raw()
+        return cls(raw, repo)
 
     def member_by_phone(self, phone: str) -> Member | None:
         p = re.sub(r"[^0-9+]", "", phone or "")
+        if not p.lstrip("+"):
+            return None
         for m in self.members:
-            if m.phone == p or m.phone.lstrip("+") == p.lstrip("+"):
+            if m.phone and (m.phone == p or m.phone.lstrip("+") == p.lstrip("+")):
                 return m
         return None
 
     def member(self, member_id: str) -> Member:
-        return next(m for m in self.members if m.id == member_id)
+        m = self.find(member_id)
+        if m is None:
+            raise KeyError(f"no member {member_id}")
+        return m
+
+    def find(self, member_id: str) -> Member | None:
+        return next((m for m in self.members if m.id == member_id), None)
+
+    def find_by_name(self, ref: str) -> Member | None:
+        """Member by id, display name or (part of the) name, case-insensitive."""
+        r = _norm(ref or "")
+        if not r:
+            return None
+        for m in self.members:
+            if r in (m.id, _norm(m.display), _norm(m.name)):
+                return m
+        hits = [m for m in self.members if r in _norm(m.name).split() or r in _norm(m.display).split()
+                or _norm(m.name).startswith(r)]
+        return hits[0] if len(hits) == 1 else None
+
+    def display_of(self, member_id: str) -> str:
+        m = self.find(member_id)
+        return m.display if m else member_id
 
     def admins(self) -> list[Member]:
         return [m for m in self.members if m.role == "admin"]
 
+    def admin_label(self) -> str:
+        a = self.admins()
+        return a[0].display if a else "the admin"
+
     def history(self) -> list[dict]:
         recorded = self.repo.list("purchases")
-        return sorted(self.raw["purchase_history"] + recorded, key=lambda r: r["date"])
+        return sorted(self.raw.get("purchase_history", []) + recorded, key=lambda r: r["date"])
 
     def record_purchase(self, when: date, sku: str, qty: int, by: str, order_id: str) -> None:
         key = f"{order_id}:{sku}"
         self.repo.put("purchases", key, {"date": when.isoformat(), "sku": sku, "qty": qty, "by": by})
+
+    # ---------- learned usual brands (household memory) ----------
+    def learn_preference(self, word: str, sku: str, qty: int = 1, source: str = "choice", by: str = "",
+                         at: str = "") -> dict | None:
+        """Remember "<generic word> means this product for us". An explicit choice always wins;
+        a preference inferred from a paid order never overwrites an explicit choice."""
+        key = pref_key(word)
+        if not key or len(key) > 60:
+            return None
+        old = self.preferences.get(key)
+        if old and source == "order" and (old.get("source", "choice") != "order" or old.get("sku") == sku):
+            return None
+        doc = {"word": key, "sku": sku, "qty": max(1, int(qty or 1)), "source": source, "by": by, "at": at}
+        self.preferences[key] = doc
+        self.repo.put("prefs", key, doc)
+        return doc
 
 
 class Resolver:
@@ -147,8 +241,26 @@ class Resolver:
         self.hh = household
 
     def _pref(self, query: str) -> tuple[str, dict] | None:
-        q = " ".join(w for w in _norm(query).split() if w not in QTY_WORDS and not w.isdigit())
+        q = pref_key(query)
         return (q, self.hh.preferences[q]) if q in self.hh.preferences else None
+
+    def _default(self, query: str) -> dict | None:
+        """No household preference yet: among the most relevant matches pick a sensible default,
+        in stock, well rated and mid-priced (neither the cheapest nor the premium pack)."""
+        scored = self.catalog.search_scored(query, limit=12)
+        if not scored:
+            return None
+        top = max(rel for _, rel, _ in scored)
+        band = [it for _, rel, it in scored if rel >= top - 0.5]
+        ok = [it for it in band if self._ok(it)]
+        if not ok:
+            return scored[0][2]
+        prices = sorted(it["price_inr"] for it in ok)
+        median = prices[len(prices) // 2]
+        if len(ok) >= 3:
+            lo, hi = prices[len(prices) // 3], prices[-(len(prices) // 3) - 1]
+            ok = [it for it in ok if lo <= it["price_inr"] <= hi] or ok
+        return sorted(ok, key=lambda it: (-it["seller_rating"], abs(it["price_inr"] - median), it["id"]))[0]
 
     def _ok(self, it: dict) -> bool:
         return it["in_stock"] and it["seller_rating"] >= MIN_RATING
@@ -188,12 +300,14 @@ class Resolver:
             alias, p = pref
             item = self.catalog.get(p["sku"])
             default_qty = p.get("qty", 1)
+            if item is None:  # the remembered product left the catalog
+                pref, item, default_qty, source = None, self._default(query), 1, "search"
+                if item is None:
+                    return {"query": query, "resolved": False, "reason": "no matching product"}
         else:
-            hits = self.catalog.search(query)
-            hits_ok = [h for h in hits if self._ok(h)] or hits
-            if not hits_ok:
+            item = self._default(query)
+            if item is None:
                 return {"query": query, "resolved": False, "reason": "no matching product"}
-            item = hits_ok[0]
             default_qty = 1
             source = "search"
         if not self._ok(item):

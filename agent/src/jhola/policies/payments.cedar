@@ -12,24 +12,54 @@ permit (principal, action == Action::"auto_pay", resource);
 
 @id("member-may-request-approval")
 @reason("Any household member may ask the admin to approve an order.")
-@hinglish("Mom se approval maanga ja sakta hai.")
+@hinglish("{admin} se approval maanga ja sakta hai.")
 permit (principal, action == Action::"request_approval", resource);
 
 @id("admin-approved-pay")
 @reason("The admin approved this order.")
-@hinglish("Mom ne approve kar diya.")
+@hinglish("{admin} ne approve kar diya.")
 permit (principal, action == Action::"approved_pay", resource)
 when { context.approver_role == "admin" };
 
 @id("approval-above-threshold")
-@reason("Orders above Rs 1000 need admin approval.")
-@hinglish("Rs 1000 se upar ke order ke liye Mom ka approval chahiye.")
+@reason("Orders above Rs {threshold} need admin approval.")
+@hinglish("Rs {threshold} se upar ke order ke liye {admin} ka approval chahiye.")
 forbid (principal, action == Action::"auto_pay", resource)
 when { context.order_total_inr > resource.approval_threshold_inr }
-unless { principal.role == "admin" };
+unless { principal.role == "admin" }
+unless {
+  principal has delegated_cap_inr && principal has delegated_until &&
+  context.today <= principal.delegated_until &&
+  context.member_spent_delegated_inr + context.order_total_inr <= principal.delegated_cap_inr
+};
+
+@id("member-daily-limit")
+@reason("This order takes the member above their daily limit, so the admin must approve it.")
+@hinglish("Aaj ki personal limit paar ho rahi hai, {admin} ka approval chahiye.")
+forbid (principal, action == Action::"auto_pay", resource)
+when {
+  principal has daily_cap_inr &&
+  context.member_spent_today_inr + context.order_total_inr > principal.daily_cap_inr
+}
+unless {
+  principal has delegated_cap_inr && principal has delegated_until &&
+  context.today <= principal.delegated_until &&
+  context.member_spent_delegated_inr + context.order_total_inr <= principal.delegated_cap_inr
+};
+
+@id("member-order-limit")
+@reason("This order is above the member's per-order limit, so the admin must approve it.")
+@hinglish("Order personal limit se upar hai, {admin} ka approval chahiye.")
+forbid (principal, action == Action::"auto_pay", resource)
+when { principal has order_cap_inr && context.order_total_inr > principal.order_cap_inr }
+unless {
+  principal has delegated_cap_inr && principal has delegated_until &&
+  context.today <= principal.delegated_until &&
+  context.member_spent_delegated_inr + context.order_total_inr <= principal.delegated_cap_inr
+};
 
 @id("mandate-monthly-cap")
-@reason("This order would exceed the monthly UPI AutoPay mandate of Rs 5000.")
+@reason("This order would exceed the monthly UPI AutoPay mandate of Rs {cap}.")
 @hinglish("Is mahine ka UPI AutoPay limit khatam ho jayega.")
 forbid (
   principal,
@@ -39,8 +69,8 @@ forbid (
 when { context.month_spent_inr + context.order_total_inr > resource.monthly_cap_inr };
 
 @id("house-help-daily-cap")
-@reason("House help orders are capped at Rs 500 per day.")
-@hinglish("Didi ke orders ki roz ki limit Rs 500 hai.")
+@reason("House help orders are capped at Rs {daily} per day.")
+@hinglish("Didi ke orders ki roz ki limit Rs {daily} hai.")
 forbid (
   principal,
   action in [Action::"auto_pay", Action::"request_approval", Action::"approved_pay"],
@@ -49,4 +79,10 @@ forbid (
 when {
   principal.role == "house_help" &&
   context.member_spent_today_inr + context.order_total_inr > resource.house_help_daily_cap_inr
+}
+unless { principal has daily_cap_inr }
+unless {
+  principal has delegated_cap_inr && principal has delegated_until &&
+  context.today <= principal.delegated_until &&
+  context.member_spent_delegated_inr + context.order_total_inr <= principal.delegated_cap_inr
 };

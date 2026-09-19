@@ -4,7 +4,20 @@
 @reason("Admins and adults can buy from any category.")
 @hinglish("Bade log kuch bhi order kar sakte hain.")
 permit (principal, action == Action::"purchase_item", resource)
-when { principal.role == "admin" || principal.role == "adult" };
+when { principal.role == "admin" || principal.role == "adult" || principal.role == "elder" };
+
+@id("member-category-scope")
+@reason("This member can order from the categories the admin allowed.")
+@hinglish("Yeh category is member ke liye allowed hai.")
+permit (principal, action == Action::"purchase_item", resource)
+when { principal has allowed_categories && principal.allowed_categories.contains(resource.category) };
+
+@id("member-outside-category-scope")
+@reason("This category is outside what the admin allowed for this member.")
+@hinglish("Yeh category is member ke liye allowed nahi hai.")
+forbid (principal, action == Action::"purchase_item", resource)
+when { principal has allowed_categories && !principal.allowed_categories.contains(resource.category) }
+unless { principal.role == "admin" };
 
 @id("house-help-category-scope")
 @reason("House help can order staples, dairy, vegetables, fruits and cleaning items.")
@@ -22,7 +35,8 @@ forbid (principal, action == Action::"purchase_item", resource)
 when {
   principal.role == "house_help" &&
   !["staples", "dairy", "vegetables", "fruits", "cleaning"].contains(resource.category)
-};
+}
+unless { principal has allowed_categories };
 
 @id("teen-category-scope")
 @reason("Teens can order stationery and snacks.")
@@ -40,7 +54,8 @@ forbid (principal, action == Action::"purchase_item", resource)
 when {
   principal.role == "teen" &&
   !["stationery", "snacks", "energy_drinks"].contains(resource.category)
-};
+}
+unless { principal has allowed_categories };
 
 @id("teen-no-energy-drinks")
 @reason("Energy drinks are not allowed for teens.")
@@ -56,7 +71,7 @@ when { resource.seller_rating.lessThan(decimal("4.0")) };
 
 @id("max-qty-per-line")
 @reason("More than 5 units of one item needs the admin.")
-@hinglish("Ek item ke 5 se zyada units sirf Mom order kar sakti hain.")
+@hinglish("Ek item ke 5 se zyada units sirf {admin} order kar sakte hain.")
 forbid (principal, action == Action::"purchase_item", resource)
 when { context.quantity > 5 }
 unless { principal.role == "admin" };

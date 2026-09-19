@@ -6,7 +6,14 @@ entity Household;
 
 entity Member in [Household] {
   name: String,
-  role: String, // admin | adult | house_help | teen
+  role: String, // admin | adult | house_help | teen | elder
+  // Personal limits set by the admin (optional). Above a cap the admin must approve.
+  daily_cap_inr?: Long,
+  order_cap_inr?: Long,
+  allowed_categories?: Set<String>, // when present it replaces the role's category scope
+  // Temporary delegation ("Didi can spend 1500 this week"): valid while context.today <= delegated_until.
+  delegated_cap_inr?: Long,
+  delegated_until?: Long, // yyyymmdd
 };
 
 entity Product {
@@ -30,6 +37,7 @@ action purchase_item appliesTo {
   context: {
     quantity: Long,
     line_total_inr: Long,
+    today: Long, // yyyymmdd in IST, e.g. 20260920
   },
 };
 
@@ -41,5 +49,7 @@ action auto_pay, request_approval, approved_pay appliesTo {
     month_spent_inr: Long,
     member_spent_today_inr: Long,
     approver_role: String, // "" unless an admin approved this order
+    today: Long, // yyyymmdd in IST, e.g. 20260920
+    member_spent_delegated_inr: Long, // paid by this member since their delegation started (0 if none)
   },
 };
