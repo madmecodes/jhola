@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, SendHorizontal, X } from "lucide-react";
 import Logo from "@/components/Logo";
+import { Avatar } from "@/components/Avatar";
 import { api, errorMessage } from "@/lib/jhola/client";
 import type { ChatButton, ChatMember, Order } from "@/lib/jhola/types";
 import { DecisionChip, PageHeader, PolicyChip, StatusChip, rs } from "./ui";
@@ -189,9 +190,7 @@ export default function TryView() {
                     member === x.id ? "border-ink bg-paper shadow-sm" : "border-line bg-paper/60 hover:border-ink/40"
                   }`}
                 >
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${x.tone}`} aria-hidden>
-                    {x.initials}
-                  </span>
+                  <Avatar id={x.id} initials={x.initials} tone={x.tone} size={36} />
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold">{x.label}</span>
                     <span className="hidden truncate text-[11px] text-ink-soft sm:block">{x.sub}</span>

@@ -1,8 +1,10 @@
 import rulesPhoto from "@/public/images/household-rules.webp";
+import { Avatar } from "@/components/Avatar";
 import SectionHeading from "./SectionHeading";
 import SectionPhoto from "./SectionPhoto";
 
 type Member = {
+  id: string;
   name: string;
   role: string;
   initials: string;
@@ -14,6 +16,7 @@ type Member = {
 
 const members: Member[] = [
   {
+    id: "mom",
     name: "Meera",
     role: "Family admin",
     initials: "M",
@@ -23,6 +26,7 @@ const members: Member[] = [
     example: { text: "Approved Rs 1,123 grocery order", outcome: "allowed" },
   },
   {
+    id: "didi",
     name: "Sunita",
     role: "House help",
     initials: "S",
@@ -32,6 +36,7 @@ const members: Member[] = [
     example: { text: "Milk, bread, eggs: Rs 146", outcome: "allowed" },
   },
   {
+    id: "teen",
     name: "Aarav",
     role: "Teenager",
     initials: "A",
@@ -41,6 +46,7 @@ const members: Member[] = [
     example: { text: "Energy drink, 4 cans", outcome: "denied" },
   },
   {
+    id: "dadaji",
     name: "Dadaji",
     role: "Grandparent",
     initials: "D",
@@ -78,9 +84,7 @@ export default function HouseholdRules() {
             return (
               <li key={m.name} className="flex flex-col rounded-2xl border border-line bg-paper p-6 shadow-[0_1px_0_rgba(31,42,90,0.04)]">
                 <div className="flex items-center gap-3">
-                  <span className={`font-display grid h-11 w-11 place-items-center rounded-full text-lg font-semibold ${m.tone}`} aria-hidden>
-                    {m.initials}
-                  </span>
+                  <Avatar id={m.id} initials={m.initials} tone={m.tone} size={44} />
                   <div>
                     <h3 className="font-semibold leading-tight">{m.name}</h3>
                     <p className="text-sm text-ink-soft">{m.role}</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Avatar } from "@/components/Avatar";
 import { Check, RefreshCw, RotateCcw, X } from "lucide-react";
 import { api, errorMessage } from "@/lib/jhola/client";
 import { usePolling } from "@/lib/jhola/hooks";
@@ -66,9 +67,7 @@ function MandateMeter({ m }: { m: Mandate }) {
 function MemberCard({ m }: { m: Member }) {
   return (
     <li className="flex gap-3 rounded-2xl border border-line bg-paper p-4">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${ROLE_TONE[m.role] ?? "bg-sand text-ink"}`} aria-hidden>
-        {initials(m.name)}
-      </span>
+      <Avatar id={m.id} initials={initials(m.name)} tone={ROLE_TONE[m.role] ?? "bg-sand text-ink"} size={40} />
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 font-semibold">
           {m.name}

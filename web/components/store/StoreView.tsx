@@ -32,6 +32,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Logo from "@/components/Logo";
+import { Avatar } from "@/components/Avatar";
 import { api, errorMessage, IS_LIVE } from "@/lib/jhola/client";
 import { usePolling } from "@/lib/jhola/hooks";
 import type { ChatMember, ChatResponse } from "@/lib/jhola/types";
@@ -283,9 +284,7 @@ function JholaPanel({
               onClick={() => setMember(m.id)}
               className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-1.5 text-xs font-semibold ${member.id === m.id ? "border-ink bg-paper" : "border-line bg-paper/50 hover:border-ink/40"}`}
             >
-              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold ${m.tone}`} aria-hidden>
-                {m.initials}
-              </span>
+              <Avatar id={m.id} initials={m.initials} tone={m.tone} size={28} />
               {m.label}
             </button>
           ))}
