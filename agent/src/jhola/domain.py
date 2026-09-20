@@ -286,8 +286,25 @@ class Resolver:
         self.hh = household
 
     def _pref(self, query: str) -> tuple[str, dict] | None:
+        """The household's usual product for the generic word. A multi-word query ("basmati chawal",
+        "surf excel") also matches a preference stored under one of its words, but only if that preferred
+        product is among the most relevant hits for the whole query ("moong dal" never becomes toor dal)."""
         q = pref_key(query)
-        return (q, self.hh.preferences[q]) if q in self.hh.preferences else None
+        if q in self.hh.preferences:
+            return q, self.hh.preferences[q]
+        words = q.split()
+        if len(words) < 2:
+            return None
+        scored = self.catalog.search_scored(query, limit=12)
+        if not scored:
+            return None
+        top = max(rel for _, rel, _ in scored)
+        band = {it["id"] for _, rel, it in scored if rel > top - 0.5}
+        for w in words:
+            p = self.hh.preferences.get(w)
+            if p and p.get("sku") in band:
+                return w, p
+        return None
 
     def _default(self, query: str) -> dict | None:
         """No household preference yet: among the most relevant matches pick a sensible default,
@@ -296,7 +313,9 @@ class Resolver:
         if not scored:
             return None
         top = max(rel for _, rel, _ in scored)
-        band = [it for _, rel, it in scored if rel >= top - 0.5]
+        # Strictly inside half a point: the processed-form penalty is exactly 0.5, so "kothmir" never
+        # lands on coriander powder just because the powder pack is the mid-priced match.
+        band = [it for _, rel, it in scored if rel > top - 0.5]
         ok = [it for it in band if self._ok(it)]
         if not ok:
             return scored[0][2]
