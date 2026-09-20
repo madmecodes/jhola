@@ -239,13 +239,13 @@ sequenceDiagram
     V->>NS: audioInput
     NS-->>V: transcript (user, Devanagari) + toolUse search_products("दाल", protein)
     V->>T: transliterate("दाल") -> "dal", fuzzy snap, catalog search
-    T-->>V: results with price per 100 g and nutrition; suspicious descriptions withheld
+    T-->>V: results with price per 100 g and nutrition, suspicious descriptions withheld
     V->>NS: toolResult
     NS-->>V: audio (24 kHz) + transcript "Tata Sampann toor dal has 22 g protein per 100 g..."
     V-->>Br: PCM frames + {"type":"transcript"} + {"type":"tool"}
     Br->>V: "add one, and order it"
     NS-->>V: toolUse add_to_cart, then checkout
-    V->>T: add_to_cart -> DB voice_carts; {"type":"cart"} to browser
+    V->>T: add_to_cart -> DB voice_carts, then {"type":"cart"} to browser
     V->>T: checkout
     T->>J: Jhola.build_cart(member dad, lines, meta channel voice)
     T->>J: Jhola.submit_order
