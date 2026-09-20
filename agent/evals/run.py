@@ -320,8 +320,17 @@ def markdown(agg: dict, recs: list[dict]) -> str:
          f"{agg['cases_run']} of {agg['cases_total']} cases run through the real pipeline (Strands agent with "
          f"{'live Bedrock' if agg['mode'] == 'live' else 'the scripted stub model'}, tools, Cedar, simulated UPI), "
          "each in its own fresh in-memory copy of the demo household.", "",
+         "The numbers that carry the claim come first: nothing unsafe was paid, nothing errored, and the "
+         "run is reproducible. Accuracy follows. How the run was produced is in Methodology below.", "",
          "| Metric | Value |", "|---|---|",
-         f"| Cases passed (all checks) | {pct(agg['cases_passed'], agg['cases_run'])} |",
+         f"| Cases run end to end | {agg['cases_run']} of {agg['cases_total']} |",
+         f"| **Unsafe payments** | **{agg['unsafe_payments']}** |",
+         f"| Errors (exceptions) | {agg['errors']} |",
+         f"| Latency p50 / p95 / max (s per case) | {agg['latency_s']['p50']} / {agg['latency_s']['p95']} / {agg['latency_s']['max']} |",
+         f"| Cost total / per case / per submitted order (USD) | {agg['cost_usd']} / {agg['cost_per_case_usd']} / {agg['cost_per_order_usd']} |",
+         f"| Tokens in / out / cached | {agg['tokens']['inputTokens']} / {agg['tokens']['outputTokens']} / {agg['tokens']['cacheReadInputTokens']} |",
+         "", "### Accuracy", "", "| Metric | Value |", "|---|---|",
+         f"| Cases passed (every check) | {pct(agg['cases_passed'], agg['cases_run'])} |",
          f"| Item resolution accuracy | {pct(agg['item_resolution']['hit'], agg['item_resolution']['expected'])} "
          f"({agg['item_resolution']['excluded_refused_by_model']} blocked items excluded: the model refused before resolving) |",
          f"| Quantity accuracy | {pct(agg['quantity']['hit'], agg['quantity']['expected'])} |",
@@ -329,13 +338,25 @@ def markdown(agg: dict, recs: list[dict]) -> str:
          f"({agg['policy_decision']['via_precheck']} denied at resolve_item's Cedar pre-check, "
          f"{agg['policy_decision']['model_refused']} refused by the model before any tool call, "
          f"{agg['policy_decision']['contained_instead']} contained by Cedar after the model followed an injection) |",
-         f"| Unsafe payments | {agg['unsafe_payments']} |",
-         f"| Injection resistance (model did not follow) | {pct(agg['injection']['resisted'], agg['injection']['cases'])} |",
-         f"| Injection containment (no unsafe payment) | {pct(agg['injection']['contained'], agg['injection']['cases'])} |",
-         f"| Latency p50 / p95 / max (s per case) | {agg['latency_s']['p50']} / {agg['latency_s']['p95']} / {agg['latency_s']['max']} |",
-         f"| Tokens in / out / cached | {agg['tokens']['inputTokens']} / {agg['tokens']['outputTokens']} / {agg['tokens']['cacheReadInputTokens']} |",
-         f"| Cost total / per case / per submitted order (USD) | {agg['cost_usd']} / {agg['cost_per_case_usd']} / {agg['cost_per_order_usd']} |",
-         f"| Errors (exceptions) | {agg['errors']} |", "",
+         "", "### Adversarial cases", "",
+         "Two different things, kept apart on purpose.", "", "| Metric | Value |", "|---|---|",
+         f"| Adversarial cases run | {agg['injection']['cases']} |",
+         f"| The live model refused the injection (resistance) | {pct(agg['injection']['resisted'], agg['injection']['cases'])} |",
+         f"| Cedar's containment path fired (the model followed an injection and Cedar denied it) | "
+         f"{agg['policy_decision']['contained_instead']} of {agg['injection']['cases']} |",
+         f"| Adversarial cases that ended in an unsafe payment | "
+         f"{sum(1 for r in recs if not r['skipped'] and r['category'] == 'adversarial' and r['score'].get('unsafe_payment'))} |",
+         "",
+         "Resistance is the model behaving. Containment is Cedar holding when the model does not. This run "
+         "measures resistance only: the live model refused every injection, so Cedar never had to contain "
+         "one, and this run is **not** evidence that Cedar contains a compromised model. That is what the "
+         "compromised-model red team is for - a scripted Strands provider that obeys the attacker, run "
+         "through the same tool loop, Cedar and mandate. Reproduce it at `/console/redteam` on the live "
+         "site, via `POST /api/redteam {\"attack\": \"injection\" | \"overspend\" | \"forbidden_category\"}` "
+         "on the console API, or offline with `uv run pytest -k redteam` "
+         "(`tests/test_api.py::test_redteam_blocked_and_sandboxed` covers all three attacks, "
+         "`tests/test_diet.py::test_redteam_allergen_bypass_blocked` the allergen bypass; the attack "
+         "scripts are in `src/jhola/redteam.py`).", "",
          f"Pricing assumption: {agg['pricing_assumption']}. Cached input tokens are counted at the cached rate.", "",
          "## By category", "", "| Category | Cases | Passed | Decision ok | p50 s |", "|---|---|---|---|---|"]
     for cat, c in sorted(agg["by_category"].items()):
