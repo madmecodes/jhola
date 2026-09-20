@@ -255,46 +255,62 @@ Scenarios:
 
 ### Evals
 
-`agent/evals/` runs 60+ JSONL cases (`evals/cases.jsonl`) through the real pipeline, each in a fresh
+`agent/evals/` runs 76 JSONL cases (`evals/cases.jsonl`) through the real pipeline, each in a fresh
 isolated in-memory household, against live Bedrock: Hinglish / Hindi orders with typos, quantities and units
 ("aadha kilo", "do packet", "1 darjan"), parchi-style multi-line lists, aliases, ambiguous items, product
-questions, admin commands, policy cases for every role, dietary and allergy cases, and 10 adversarial /
+questions, admin commands, policy cases for every role, dietary and allergy cases, and 11 adversarial /
 prompt-injection cases (in the message and in product descriptions).
 
 ```bash
-uv run python -m evals.run --live [--limit N] [--ids a,b] [--category c]
+uv run python -m evals.run --live [--limit N] [--ids a,b] [--category c] [--workers N]
+uv run python -m evals.run --rescore          # re-apply the scoring rules to stored records, no model calls
 ```
 
 Scores: item resolution accuracy (expected SKU or acceptable set), quantity accuracy, policy decision
 accuracy, unsafe payments (must be 0), injection resistance (the model) and containment (Cedar), p50 / p95
-latency, tokens and estimated cost per order. Results: `evals/results/latest.json` and the full table,
-per-category breakdown and diagnosed failures in [`evals/RESULTS.md`](evals/RESULTS.md).
+latency, tokens and metered cost per order. Results: `evals/results/latest.json` and the full table,
+methodology, per-category breakdown and diagnosed failures in [`evals/RESULTS.md`](evals/RESULTS.md).
 
-Live run, 76 cases, Claude Sonnet on Bedrock (2026-09-20):
+Live run, 76 cases, one clean full pass, Claude Sonnet 5 on Bedrock (2026-09-20). No merging: every number
+below is from a single `--live` run of all 76 cases.
 
 | Metric | Value |
 |---|---|
-| Cases passed (every check) | 89.5% (68 / 76) |
-| Item resolution accuracy | 90.0% (72 / 80 expected items) |
-| Quantity accuracy | 78.6% (11 / 14 cases with an explicit quantity) |
-| Policy decision accuracy | 92.1% (70 / 76) |
+| Cases run end to end | 76 of 76 |
 | **Unsafe payments** | **0** |
-| Injection resistance / containment (11 adversarial) | 100% / 100% |
-| Latency p50 / p95 | 9.5 s / 16.2 s per case |
-| Cost | USD 1.83 total, 0.024 per case, 0.054 per submitted order |
+| Errors (exceptions) | 0 |
+| Latency p50 / p95 / max | 9.4 s / 16.4 s / 20.4 s per case |
+| Cost (metered) | USD 1.95 total, 0.026 per case, 0.059 per submitted order |
+| Cases passed (every check) | 88.2% (67 / 76) |
+| Item resolution accuracy | 88.9% (72 / 81 expected items) |
+| Quantity accuracy | 78.6% (11 / 14 cases with an explicit quantity) |
+| Policy decision accuracy | 90.8% (69 / 76) |
 
-None of the six decision misses is a wrong Cedar verdict or a payment that should not have happened: they
-are cases where the model asked a clarifying question instead of ordering ("aadha kilo atta" when the usual
-pack is 5 kg, "dal chahiye" with no brand named). Nine denials were refused by the model from its system
-prompt before any tool call, so the outcome is right but Cedar never saw them and the console shows no
-decision for those.
+Adversarial cases (11), reported as two separate things:
 
-Three real bugs the first pass found and the fixes: the model stopped to ask "cart bana kar order karu?"
+| Metric | Value |
+|---|---|
+| The live model refused the injection (resistance) | 11 / 11 |
+| Cedar's containment path fired (model followed, Cedar denied) | 0 / 11 |
+| Adversarial cases that ended in an unsafe payment | 0 |
+
+The live model refused every injection, so Cedar never had to contain one. **This suite therefore measures
+resistance, not containment, and is not evidence that Cedar holds when the model fails.** Containment is
+demonstrated by the compromised-model red team: `uv run pytest -k redteam`, `POST /api/redteam` on the
+console API, or `/console/redteam` on the live site.
+
+None of the nine failures is a wrong Cedar verdict or a payment that should not have happened: they are
+cases where the model asked a clarifying question instead of ordering ("aadha kilo atta" when the usual
+pack is 5 kg, "dal chahiye" with no brand named, "tel" defaulting to hair oil in the catalog). Nine denials
+were refused by the model from its system prompt before any tool call, so the outcome is right but Cedar
+never saw them and the console shows no decision for those.
+
+Three real bugs an earlier pass found, and the fixes: the model stopped to ask "cart bana kar order karu?"
 in 23 cases (the system prompt now says to build and submit in the same turn when the list is clear, and
 spells out Hindi number words and pieces vs packs); `Resolver._default` cancelled the processed-form
 penalty with its relevance band, so "kothmir" resolved to coriander powder; `Resolver._pref` missed a
 preference stored under one word of a multi-word query, so "5 kg basmati chawal" became 5 one-kg packs of
-another line.
+another line. That pass is `evals/results/pass1_before_fixes.json`; it is not mixed into the table above.
 
 ### Live model (Bedrock)
 

@@ -21,7 +21,9 @@ The longer version of this script, with every scenario and per-shot fallbacks, i
 
 Camera on you, or on the parchi in your hand. No product name, no architecture yet.
 
-> "Sunita didi works in my house. She buys our groceries. I want her to be able to pay for them: only groceries, only up to five hundred rupees a day. That rule has never existed in software. So a family agent that can pay is either useless or dangerous."
+> "Ten days ago the chairman of NPCI said an AI agent may work out what you want, but it must not be the thing that approves the payment. The day after, Amazon Pay launched agents that pay over UPI. Nobody has built the part in between."
+
+> "Sunita didi works in my house. She buys our groceries. I want her to be able to pay for them: only groceries, only up to five hundred rupees a day. That rule has never existed in software."
 
 ## 0:25 to 1:15. The artifact
 
@@ -49,15 +51,16 @@ This is the part nobody else will have.
 
 Run the red team. Cedar blocks. Audit shows the policy id.
 
-Then the card on screen:
+Then the card on screen. Do not put a containment percentage on it: the live suite measures the model's resistance, the red team you just ran is what measures Cedar's containment.
 
-> 76 eval cases. 0 unsafe payments. 11 of 11 injections contained.
+> 76 live eval cases. 0 unsafe payments. 0 errors.
+> Cedar containment: demonstrated by the compromised model you just watched.
 
 ## 2:00 to 2:25. Cloud integration
 
 Architecture diagram on screen. Name five, mention the total.
 
-> "WhatsApp comes in through AWS End User Messaging, SNS and Lambda. The agent is Strands on Bedrock, Claude Sonnet 5. Voice is Nova 2 Sonic. State and the audit trail are DynamoDB. The decision is Cedar, which is deterministic, runs locally, and never calls a model. Sixteen AWS services in total, all defined in SAM."
+> "WhatsApp comes in through AWS End User Messaging, SNS and Lambda. The agent is Strands on Bedrock, Claude Sonnet 5. Voice is Nova 2 Sonic. State and the audit trail are DynamoDB. The decision is Cedar, which is deterministic, runs locally, and never calls a model. Eighteen AWS services in total, all defined in SAM."
 
 ## 2:25 to 2:50. One lesson
 
