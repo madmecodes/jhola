@@ -17,7 +17,7 @@ from .policy import Decision, PolicyEngine, yyyymmdd
 from .store import Repository, ScopedRepository
 from .upi import MandateService
 
-DEFAULT_MONTH_SPENT_INR = 1850  # seeded usage so far this month (demo household only)
+DEFAULT_MONTH_SPENT_INR = 0  # the demo mandate starts empty so used always equals the orders on screen
 DUPLICATE_WINDOW_MIN = 60  # "Dad ne 20 min pehle doodh order kiya hai": look back this long
 
 _catalog: Catalog | None = None

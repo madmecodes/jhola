@@ -10,7 +10,7 @@ Do these in order, about 15 minutes before recording.
 
 1. Message the Jhola number (+91 96063 54404) from the demo phone with "hi". This opens the 24-hour WhatsApp window, so Approve buttons and refill messages can reach you.
 2. If using a second phone, message the number from it once as well, and make sure it is a number Jhola has never seen (or run "delete my data" from it first).
-3. Send `/reset` from the demo phone. Confirm the reply: orders, payments and conversation cleared, mandate back to Rs 1850 used of Rs 5000.
+3. Send `/reset` from the demo phone. Confirm the reply: orders, payments and conversation cleared, mandate back to Rs 0 used of Rs 5000.
 4. Get the admin key: `aws ssm get-parameter --name /jhola/demo-key --with-decryption --query Parameter.Value --output text --profile ayush-aws-bits-hack --region ap-south-1`. Enter it in the console (top right, "Admin key"). Confirm the pill says "Admin key set".
 5. Open these tabs on the laptop: `/console`, `/console/audit`, `/console/redteam`, `/console/rules`, `/store#voice`. Check `/store` mic permission is granted in Chrome. Run one voice sentence to warm the Fargate task and confirm the wss connects.
 6. Confirm the Lambda is warm: send `/whoami` from the demo phone and wait for the reply.

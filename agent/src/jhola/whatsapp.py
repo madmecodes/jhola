@@ -516,7 +516,7 @@ class WhatsAppChannel:
             return f"Demo: aap *{m.display}* ({m.role}) hain." if m else "Demo: koi member set nahi hai."
         if cmd == "reset":
             reset_demo(self.repo)
-            return "Demo reset: orders, payments aur history saaf. Mandate wapas Rs 5000 cap, Rs 1850 used."
+            return "Demo reset: orders, payments aur history saaf. Mandate wapas Rs 5000 cap, Rs 0 used."
         return None
 
     # ----- main entry -----

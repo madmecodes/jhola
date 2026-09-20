@@ -84,7 +84,7 @@ def test_household_shape(api):
     assert all("******" in m["phone_masked"] for m in h["members"])
     assert any(r["id"] == "teen-no-energy-drinks" and r["source"] == "base" and "forbid" in r["cedar"]
                for r in h["rules"])
-    assert h["mandate"] == {**h["mandate"], "cap_inr": 5000, "used_inr": 1850, "remaining_inr": 3150}
+    assert h["mandate"] == {**h["mandate"], "cap_inr": 5000, "used_inr": 0, "remaining_inr": 5000}
 
 
 def test_chat_web_order_and_orders_listing(api):
@@ -216,7 +216,7 @@ def test_demo_reset_keeps_persona(api):
     api.scripts.queue.append(sc.script_b)
     call(api, "POST", "/api/chat", {"member": "teen", "text": "red bull"})
     r = call(api, "POST", "/api/demo/reset", headers={"x-jhola-demo-key": KEY})
-    assert r["ok"] and r["mandate_used_inr"] == 1850
+    assert r["ok"] and r["mandate_used_inr"] == 0
     assert api.repo.list("orders") == [] and api.repo.get("demo_acting", "+911234567890")
 
 
