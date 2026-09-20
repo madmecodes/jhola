@@ -164,8 +164,9 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) ->
             p = app.catalog.get(r["sku"])
             chk = app.check_line(member, p, r["qty"], for_member)
             if not chk["allowed"]:
-                r["rules_check"] = {**chk, "note": "this line will be BLOCKED by the household rules; offer the "
-                                                    "suggested_substitute if there is one"}
+                r["rules_check"] = {**chk, "note": "this line will be BLOCKED by the household rules for the reason "
+                                                    "given (quote it, do not invent another). If suggested_substitute "
+                                                    "is present, name it with its price and ask if they want it."}
                 log("policy_precheck", actor="cedar", member=member.id, sku=r["sku"], for_member=chk["for"],
                     policy_ids=chk["policy_ids"])
             bv = products.better_value(app.catalog, p)
