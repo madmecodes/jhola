@@ -1,56 +1,773 @@
 {
- "rajma chawal": {
-  "aliases": ["rajma chawal", "rajma rice", "rajma"],
-  "per_serving": [
-   {"alias": "rajma", "amount": 100, "unit": "g"},
-   {"alias": "chawal", "amount": 100, "unit": "g"},
-   {"alias": "pyaaz", "amount": 80, "unit": "g"},
-   {"alias": "tamatar", "amount": 80, "unit": "g"},
-   {"alias": "ginger garlic paste", "amount": 10, "unit": "g"},
-   {"alias": "hari mirch", "amount": 5, "unit": "g"},
-   {"alias": "dhaniya", "amount": 5, "unit": "g"},
-   {"alias": "rajma masala", "amount": 8, "unit": "g"},
-   {"alias": "jeera", "amount": 3, "unit": "g"},
-   {"alias": "ghee", "amount": 15, "unit": "ml"},
-   {"alias": "dahi", "amount": 150, "unit": "g"},
-   {"alias": "kheera", "amount": 100, "unit": "g"}
-  ]
- },
- "poha": {
-  "aliases": ["poha", "kanda poha"],
-  "per_serving": [
-   {"alias": "poha", "amount": 60, "unit": "g"},
-   {"alias": "pyaaz", "amount": 50, "unit": "g"},
-   {"alias": "hari mirch", "amount": 5, "unit": "g"},
-   {"alias": "curry leaves", "amount": 2, "unit": "g"},
-   {"alias": "rai", "amount": 2, "unit": "g"},
-   {"alias": "haldi", "amount": 1, "unit": "g"},
-   {"alias": "nimbu", "amount": 0.5, "unit": "pcs"},
-   {"alias": "dhaniya", "amount": 5, "unit": "g"}
-  ]
- },
- "dal tadka": {
-  "aliases": ["dal tadka", "dal fry", "tadka dal"],
-  "per_serving": [
-   {"alias": "toor dal", "amount": 60, "unit": "g"},
-   {"alias": "pyaaz", "amount": 40, "unit": "g"},
-   {"alias": "tamatar", "amount": 50, "unit": "g"},
-   {"alias": "lehsun", "amount": 5, "unit": "g"},
-   {"alias": "jeera", "amount": 2, "unit": "g"},
-   {"alias": "haldi", "amount": 1, "unit": "g"},
-   {"alias": "ghee", "amount": 10, "unit": "ml"},
-   {"alias": "dhaniya", "amount": 5, "unit": "g"}
-  ]
- },
- "aloo paratha": {
-  "aliases": ["aloo paratha", "paratha"],
-  "per_serving": [
-   {"alias": "atta", "amount": 100, "unit": "g"},
-   {"alias": "aloo", "amount": 150, "unit": "g"},
-   {"alias": "hari mirch", "amount": 5, "unit": "g"},
-   {"alias": "dhaniya", "amount": 5, "unit": "g"},
-   {"alias": "makhan", "amount": 15, "unit": "g"},
-   {"alias": "dahi", "amount": 100, "unit": "g"}
-  ]
- }
+  "rajma chawal": {
+    "aliases": [
+      "rajma chawal",
+      "rajma rice",
+      "rajma"
+    ],
+    "per_serving": [
+      {
+        "alias": "rajma",
+        "amount": 100,
+        "unit": "g"
+      },
+      {
+        "alias": "chawal",
+        "amount": 100,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "ginger garlic paste",
+        "amount": 10,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "rajma masala",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "jeera",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "ghee",
+        "amount": 15,
+        "unit": "ml"
+      },
+      {
+        "alias": "dahi",
+        "amount": 150,
+        "unit": "g"
+      },
+      {
+        "alias": "kheera",
+        "amount": 100,
+        "unit": "g"
+      }
+    ]
+  },
+  "poha": {
+    "aliases": [
+      "poha",
+      "kanda poha"
+    ],
+    "per_serving": [
+      {
+        "alias": "poha",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "curry leaves",
+        "amount": 2,
+        "unit": "g"
+      },
+      {
+        "alias": "rai",
+        "amount": 2,
+        "unit": "g"
+      },
+      {
+        "alias": "haldi",
+        "amount": 1,
+        "unit": "g"
+      },
+      {
+        "alias": "nimbu",
+        "amount": 0.5,
+        "unit": "pcs"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      }
+    ]
+  },
+  "dal tadka": {
+    "aliases": [
+      "dal tadka",
+      "dal fry",
+      "tadka dal"
+    ],
+    "per_serving": [
+      {
+        "alias": "toor dal",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 40,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "lehsun",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "jeera",
+        "amount": 2,
+        "unit": "g"
+      },
+      {
+        "alias": "haldi",
+        "amount": 1,
+        "unit": "g"
+      },
+      {
+        "alias": "ghee",
+        "amount": 10,
+        "unit": "ml"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      }
+    ]
+  },
+  "aloo paratha": {
+    "aliases": [
+      "aloo paratha",
+      "paratha"
+    ],
+    "per_serving": [
+      {
+        "alias": "atta",
+        "amount": 100,
+        "unit": "g"
+      },
+      {
+        "alias": "aloo",
+        "amount": 150,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "makhan",
+        "amount": 15,
+        "unit": "g"
+      },
+      {
+        "alias": "dahi",
+        "amount": 100,
+        "unit": "g"
+      }
+    ]
+  },
+  "shahi paneer": {
+    "aliases": [
+      "shahi paneer",
+      "paneer butter masala",
+      "paneer makhani",
+      "matar paneer"
+    ],
+    "per_serving": [
+      {
+        "alias": "paneer",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 100,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "kaju",
+        "amount": 15,
+        "unit": "g"
+      },
+      {
+        "alias": "fresh cream",
+        "amount": 30,
+        "unit": "ml"
+      },
+      {
+        "alias": "ghee",
+        "amount": 10,
+        "unit": "g"
+      },
+      {
+        "alias": "ginger garlic paste",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "garam masala",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "kasuri methi",
+        "amount": 1,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 4,
+        "unit": "g"
+      }
+    ]
+  },
+  "chole bhature": {
+    "aliases": [
+      "chole bhature",
+      "chole",
+      "chana masala",
+      "chhole"
+    ],
+    "per_serving": [
+      {
+        "alias": "kabuli chana",
+        "amount": 90,
+        "unit": "g"
+      },
+      {
+        "alias": "maida",
+        "amount": 70,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 70,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "ginger garlic paste",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "chole masala",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "tel",
+        "amount": 25,
+        "unit": "ml"
+      },
+      {
+        "alias": "dahi",
+        "amount": 30,
+        "unit": "g"
+      }
+    ]
+  },
+  "pav bhaji": {
+    "aliases": [
+      "pav bhaji",
+      "bhaji"
+    ],
+    "per_serving": [
+      {
+        "alias": "aloo",
+        "amount": 120,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 100,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 70,
+        "unit": "g"
+      },
+      {
+        "alias": "shimla mirch",
+        "amount": 40,
+        "unit": "g"
+      },
+      {
+        "alias": "matar",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "pav bhaji masala",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "makhan",
+        "amount": 20,
+        "unit": "g"
+      },
+      {
+        "alias": "nimbu",
+        "amount": 15,
+        "unit": "g"
+      }
+    ]
+  },
+  "biryani": {
+    "aliases": [
+      "biryani",
+      "veg biryani",
+      "pulao",
+      "veg pulao"
+    ],
+    "per_serving": [
+      {
+        "alias": "basmati chawal",
+        "amount": 110,
+        "unit": "g"
+      },
+      {
+        "alias": "dahi",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "biryani masala",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "ghee",
+        "amount": 15,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "gajar",
+        "amount": 40,
+        "unit": "g"
+      },
+      {
+        "alias": "matar",
+        "amount": 40,
+        "unit": "g"
+      }
+    ]
+  },
+  "idli sambar": {
+    "aliases": [
+      "idli sambar",
+      "idli",
+      "sambar",
+      "dosa"
+    ],
+    "per_serving": [
+      {
+        "alias": "idli rava",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "urad dal",
+        "amount": 30,
+        "unit": "g"
+      },
+      {
+        "alias": "toor dal",
+        "amount": 40,
+        "unit": "g"
+      },
+      {
+        "alias": "sambar masala",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "imli",
+        "amount": 10,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "tel",
+        "amount": 15,
+        "unit": "ml"
+      }
+    ]
+  },
+  "kadhi chawal": {
+    "aliases": [
+      "kadhi chawal",
+      "kadhi",
+      "kadhi pakora"
+    ],
+    "per_serving": [
+      {
+        "alias": "dahi",
+        "amount": 120,
+        "unit": "g"
+      },
+      {
+        "alias": "besan",
+        "amount": 40,
+        "unit": "g"
+      },
+      {
+        "alias": "chawal",
+        "amount": 100,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "jeera",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "haldi",
+        "amount": 2,
+        "unit": "g"
+      },
+      {
+        "alias": "tel",
+        "amount": 15,
+        "unit": "ml"
+      }
+    ]
+  },
+  "khichdi": {
+    "aliases": [
+      "khichdi",
+      "khichadi",
+      "moong dal khichdi"
+    ],
+    "per_serving": [
+      {
+        "alias": "chawal",
+        "amount": 80,
+        "unit": "g"
+      },
+      {
+        "alias": "moong dal",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "ghee",
+        "amount": 10,
+        "unit": "g"
+      },
+      {
+        "alias": "jeera",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "haldi",
+        "amount": 2,
+        "unit": "g"
+      },
+      {
+        "alias": "namak",
+        "amount": 3,
+        "unit": "g"
+      }
+    ]
+  },
+  "upma": {
+    "aliases": [
+      "upma",
+      "uppma",
+      "rava upma"
+    ],
+    "per_serving": [
+      {
+        "alias": "sooji",
+        "amount": 70,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "hari mirch",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "rai",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "urad dal",
+        "amount": 5,
+        "unit": "g"
+      },
+      {
+        "alias": "tel",
+        "amount": 15,
+        "unit": "ml"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      }
+    ]
+  },
+  "palak paneer": {
+    "aliases": [
+      "palak paneer",
+      "palak",
+      "saag paneer"
+    ],
+    "per_serving": [
+      {
+        "alias": "palak",
+        "amount": 150,
+        "unit": "g"
+      },
+      {
+        "alias": "paneer",
+        "amount": 70,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "ginger garlic paste",
+        "amount": 8,
+        "unit": "g"
+      },
+      {
+        "alias": "garam masala",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "ghee",
+        "amount": 10,
+        "unit": "g"
+      },
+      {
+        "alias": "fresh cream",
+        "amount": 20,
+        "unit": "ml"
+      }
+    ]
+  },
+  "chai nashta": {
+    "aliases": [
+      "chai nashta",
+      "chai",
+      "breakfast",
+      "nashta"
+    ],
+    "per_serving": [
+      {
+        "alias": "chai patti",
+        "amount": 6,
+        "unit": "g"
+      },
+      {
+        "alias": "doodh",
+        "amount": 150,
+        "unit": "ml"
+      },
+      {
+        "alias": "cheeni",
+        "amount": 10,
+        "unit": "g"
+      },
+      {
+        "alias": "bread",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "makhan",
+        "amount": 15,
+        "unit": "g"
+      },
+      {
+        "alias": "anda",
+        "amount": 50,
+        "unit": "g"
+      }
+    ]
+  },
+  "maggi": {
+    "aliases": [
+      "maggi",
+      "noodles",
+      "maggie"
+    ],
+    "per_serving": [
+      {
+        "alias": "maggi",
+        "amount": 70,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 40,
+        "unit": "g"
+      },
+      {
+        "alias": "shimla mirch",
+        "amount": 30,
+        "unit": "g"
+      },
+      {
+        "alias": "makhan",
+        "amount": 10,
+        "unit": "g"
+      }
+    ]
+  },
+  "aloo gobhi": {
+    "aliases": [
+      "aloo gobhi",
+      "gobhi",
+      "aloo gobi sabzi"
+    ],
+    "per_serving": [
+      {
+        "alias": "aloo",
+        "amount": 120,
+        "unit": "g"
+      },
+      {
+        "alias": "gobhi",
+        "amount": 150,
+        "unit": "g"
+      },
+      {
+        "alias": "pyaaz",
+        "amount": 50,
+        "unit": "g"
+      },
+      {
+        "alias": "tamatar",
+        "amount": 60,
+        "unit": "g"
+      },
+      {
+        "alias": "haldi",
+        "amount": 2,
+        "unit": "g"
+      },
+      {
+        "alias": "garam masala",
+        "amount": 3,
+        "unit": "g"
+      },
+      {
+        "alias": "tel",
+        "amount": 15,
+        "unit": "ml"
+      },
+      {
+        "alias": "dhaniya",
+        "amount": 5,
+        "unit": "g"
+      }
+    ]
+  }
 }
