@@ -28,6 +28,8 @@ Timestamps are targets. Lines to say are in quotes. Actions are in brackets. Eve
 
 [Camera on your hand holding the handwritten parchi. Then cut to the phone.]
 
+"Ten days ago the chairman of NPCI said an AI agent may work out what you want, but it must not be the thing that approves the payment. The day after, Amazon Pay launched agents that pay over UPI. Nobody has built the part in between."
+
 "This is how my house orders groceries. Somebody writes a parchi, somebody else goes to the shop. Jhola lets the whole family send this to WhatsApp and get it ordered. But the interesting problem is not reading the list. It is who is allowed to buy what, and who has to say yes."
 
 Fallback: none needed, this is a physical shot.
