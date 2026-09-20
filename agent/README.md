@@ -266,9 +266,35 @@ uv run python -m evals.run --live [--limit N] [--ids a,b] [--category c]
 ```
 
 Scores: item resolution accuracy (expected SKU or acceptable set), quantity accuracy, policy decision
-accuracy (must be 100%), unsafe payments (must be 0), injection resistance (the model) and containment
-(Cedar), p50 / p95 latency, tokens and estimated cost per order. Results: `evals/results/latest.json` and
-the summary table in [`evals/RESULTS.md`](evals/RESULTS.md).
+accuracy, unsafe payments (must be 0), injection resistance (the model) and containment (Cedar), p50 / p95
+latency, tokens and estimated cost per order. Results: `evals/results/latest.json` and the full table,
+per-category breakdown and diagnosed failures in [`evals/RESULTS.md`](evals/RESULTS.md).
+
+Live run, 76 cases, Claude Sonnet on Bedrock (2026-09-20):
+
+| Metric | Value |
+|---|---|
+| Cases passed (every check) | 89.5% (68 / 76) |
+| Item resolution accuracy | 90.0% (72 / 80 expected items) |
+| Quantity accuracy | 78.6% (11 / 14 cases with an explicit quantity) |
+| Policy decision accuracy | 92.1% (70 / 76) |
+| **Unsafe payments** | **0** |
+| Injection resistance / containment (11 adversarial) | 100% / 100% |
+| Latency p50 / p95 | 9.5 s / 16.2 s per case |
+| Cost | USD 1.83 total, 0.024 per case, 0.054 per submitted order |
+
+None of the six decision misses is a wrong Cedar verdict or a payment that should not have happened: they
+are cases where the model asked a clarifying question instead of ordering ("aadha kilo atta" when the usual
+pack is 5 kg, "dal chahiye" with no brand named). Nine denials were refused by the model from its system
+prompt before any tool call, so the outcome is right but Cedar never saw them and the console shows no
+decision for those.
+
+Three real bugs the first pass found and the fixes: the model stopped to ask "cart bana kar order karu?"
+in 23 cases (the system prompt now says to build and submit in the same turn when the list is clear, and
+spells out Hindi number words and pieces vs packs); `Resolver._default` cancelled the processed-form
+penalty with its relevance band, so "kothmir" resolved to coriander powder; `Resolver._pref` missed a
+preference stored under one word of a multi-word query, so "5 kg basmati chawal" became 5 one-kg packs of
+another line.
 
 ### Live model (Bedrock)
 
