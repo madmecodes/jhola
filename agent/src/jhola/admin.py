@@ -12,7 +12,7 @@ import uuid
 from datetime import date, timedelta
 
 from . import rules as rules_mod
-from .domain import CATEGORIES, ROLES, Household, Member
+from .domain import ALLERGENS, CATEGORIES, DIET_PROFILES, ROLES, Household, Member, normalize_allergen
 from .household import ROLE_TEMPLATES, DirectoryError, expand_categories
 from .orders import Jhola
 from .phones import mask_phone, to_e164, valid_mobile
@@ -46,6 +46,8 @@ def limits_text(m: Member, hh: Household) -> str:
     if m.delegation:
         u = str(m.delegation["until"])
         parts.append(f"temporary: may spend Rs {m.delegation['cap_inr']} until {u[:4]}-{u[4:6]}-{u[6:]}")
+    if m.diet_text():
+        parts.append("diet: " + m.diet_text())
     return "; ".join(parts)
 
 
@@ -236,6 +238,68 @@ class HouseholdAdmin:
                              f"Temporary permission: *{title}*. It ends on its own after that date; the monthly "
                              f"budget and category rules still apply. Theek hai?")
 
+    def propose_diet_change(self, actor: Member, member: str, diet_profile: str | None = None,
+                            add_allergies: list[str] | None = None, remove_allergies: list[str] | None = None,
+                            vrat_until: str | None = None, max_caffeine_mg: int | None = None) -> dict:
+        self.require_admin(actor, "set dietary rules", member=member)
+        m = self.hh.find_by_name(member)
+        if m is None:
+            return {"error": f"no member called {member!r}", "members": [x.display for x in self.hh.members]}
+        params: dict = {"member_id": m.id}
+        changes = []
+        if diet_profile is not None:
+            dp = str(diet_profile).strip().lower().replace("vegetarian", "veg").replace("jain_friendly", "jain")
+            dp = {"pure veg": "veg", "shakahari": "veg", "non-veg": "none", "nonveg": "none", "no": "none",
+                  "": "none"}.get(dp, dp)
+            if dp not in DIET_PROFILES:
+                return {"error": f"diet_profile must be one of {', '.join(DIET_PROFILES)}"}
+            params["diet_profile"] = dp
+            changes.append(f"diet {m.diet_profile} -> {dp}")
+        allergies = list(m.allergies)
+        unknown = []
+        for w in add_allergies or []:
+            a = normalize_allergen(str(w))
+            if a is None:
+                unknown.append(str(w))
+            elif a not in allergies:
+                allergies.append(a)
+        for w in remove_allergies or []:
+            a = normalize_allergen(str(w))
+            if a in allergies:
+                allergies.remove(a)
+        if unknown:
+            return {"error": f"I do not know the allergen(s) {', '.join(unknown)}; I can track: "
+                             f"{', '.join(ALLERGENS)}"}
+        if add_allergies or remove_allergies:
+            params["allergies"] = allergies
+            changes.append("allergies -> " + (", ".join(a.replace("_", " ") for a in allergies) or "none"))
+        if vrat_until is not None:
+            v = str(vrat_until).strip().lower()
+            if v in ("", "none", "no", "end", "over"):
+                params["vrat_until"] = None
+                changes.append("vrat ended")
+            else:
+                try:
+                    until = date.fromisoformat(v[:10])
+                except ValueError:
+                    return {"error": "vrat_until must be a date like 2026-10-02"}
+                today = self.app.clock.today()
+                if until < today or until > today + timedelta(days=MAX_DELEGATION_DAYS):
+                    return {"error": f"the vrat end date must be between today and {MAX_DELEGATION_DAYS} days from now"}
+                params["vrat_until"] = until.isoformat()
+                changes.append(f"vrat (only vrat-friendly food) until {until.isoformat()}")
+        if max_caffeine_mg is not None:
+            c = int(max_caffeine_mg)
+            params["max_caffeine_mg"] = None if c < 0 else c
+            changes.append("caffeine limit removed" if c < 0 else
+                           ("no caffeinated drinks" if c == 0 else f"max {c} mg caffeine per order"))
+        if not changes:
+            return {"error": "say what to set: diet (veg / vegan / jain / eggetarian), an allergy, a vrat end "
+                             "date or a caffeine limit"}
+        return self._propose(actor, "diet", params,
+                             f"Diet for *{m.display}*: " + "; ".join(changes) + ". Orders for {0} that break this "
+                             "will be blocked, whoever orders. Theek hai?".format(m.display))
+
     def _draft(self, text: str, extra_member: Member | None = None) -> dict:
         hh = self.hh
         if extra_member is not None:  # draft and test the rule against the household WITH the new member
@@ -327,6 +391,21 @@ class HouseholdAdmin:
             app.directory.save_member(self.hh.id, m)
             app.audit.log("member_limits_changed", actor=actor.id, member=m.id, limits=limits_text(m, self.hh))
             return f"Done. {m.display}: {limits_text(m, self.hh)}."
+        if kind == "diet":
+            m = self.hh.find(p["member_id"])
+            if m is None:
+                return "Woh member ab household mein nahi hai."
+            if "diet_profile" in p:
+                m.diet_profile = p["diet_profile"]
+            if "allergies" in p:
+                m.allergies = list(p["allergies"])
+            if "vrat_until" in p:
+                m.vrat_until = p["vrat_until"]
+            if "max_caffeine_mg" in p:
+                m.max_caffeine_mg = p["max_caffeine_mg"]
+            app.directory.save_member(self.hh.id, m)
+            app.audit.log("member_diet_changed", actor=actor.id, member=m.id, diet=m.diet_text())
+            return f"Done. {m.display}: {m.diet_text() or 'no dietary rules'}."
         if kind == "budget":
             md = app.directory.update_mandate_settings(self.hh, p.get("monthly_cap_inr"),
                                                        p.get("approval_threshold_inr"))

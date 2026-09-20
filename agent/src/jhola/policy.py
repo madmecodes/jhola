@@ -26,13 +26,28 @@ from .domain import Household, Member
 
 
 
-def format_reason(text: str, hh: Household) -> str:
-    """Fill the {threshold} / {cap} / {daily} / {admin} placeholders used in policy annotations."""
+def format_reason(text: str, hh: Household, extra: dict | None = None) -> str:
+    """Fill the {threshold} / {cap} / {daily} / {admin} placeholders used in policy annotations
+    (plus {for}, {allergens}, {vrat_until}, {caffeine_cap} for the dietary policies)."""
     md = hh.mandate
     for k, v in (("{threshold}", md.get("per_payment_approval_above_inr")), ("{cap}", md.get("monthly_cap_inr")),
                  ("{daily}", md.get("house_help_daily_cap_inr")), ("{admin}", hh.admin_label())):
         text = text.replace(k, str(v))
+    for k, v in (extra or {}).items():
+        text = text.replace("{" + k + "}", str(v))
     return text
+
+
+# Dietary and allergy reasons come first: when a line is blocked for several reasons the safety one leads.
+SAFETY_POLICIES = ("allergy", "diet-jain", "diet-vegan", "diet-vegetarian", "diet-eggetarian", "vrat-mode",
+                   "caffeine-cap", "teen-caffeine-cap")
+
+
+def _vrat_int(iso: str | None) -> int | None:
+    try:
+        return int(str(iso)[:10].replace("-", "")) if iso else None
+    except ValueError:
+        return None
 
 
 def yyyymmdd(d) -> int:
@@ -125,6 +140,13 @@ class PolicyEngine:
         if m.delegation:  # expiry is NOT checked here: Cedar compares delegated_until with context.today
             attrs["delegated_cap_inr"] = int(m.delegation["cap_inr"])
             attrs["delegated_until"] = int(m.delegation["until"])
+        attrs["diet_profile"] = str(m.diet_profile or "none")
+        attrs["allergies"] = sorted({str(a) for a in m.allergies or []})
+        vrat = _vrat_int(m.vrat_until)
+        if vrat:  # expiry is decided by Cedar against context.today
+            attrs["vrat_until"] = vrat
+        if m.max_caffeine_mg is not None:
+            attrs["max_caffeine_mg"] = int(m.max_caffeine_mg)
         return {"uid": {"type": "Member", "id": m.id}, "attrs": attrs, "parents": [self.household_uid]}
 
     def _base_entities(self, m: Member) -> list[dict]:
@@ -144,6 +166,8 @@ class PolicyEngine:
 
     @staticmethod
     def _product_entity(p: dict) -> dict:
+        diet = p.get("diet") or {}
+        is_food = bool(p.get("is_food", bool(diet)))
         return {
             "uid": {"type": "Product", "id": p["id"]},
             "attrs": {
@@ -153,32 +177,57 @@ class PolicyEngine:
                 "tags": [str(t).lower() for t in p.get("tags", [])],
                 "price_inr": int(p["price_inr"]),
                 "seller_rating": {"__extn": {"fn": "decimal", "arg": f"{float(p['seller_rating']):.1f}"}},
+                # Non-food (or a test product without diet data) is treated as fine for every diet.
+                "is_food": is_food,
+                "veg": bool(diet.get("veg", True)),
+                "vegan": bool(diet.get("vegan", not is_food)),
+                "jain_friendly": bool(diet.get("jain_friendly", not is_food)),
+                "vrat_friendly": bool(diet.get("vrat_friendly", not is_food)),
+                "eggetarian_only": bool(diet.get("eggetarian_only", False)),
+                "allergens": sorted({str(a) for a in p.get("allergens") or []}),
+                "contains": sorted({str(a) for a in p.get("contains") or []}),
+                "caffeine_mg": int(p.get("caffeine_mg_per_serving") or 0),
             },
             "parents": [],
         }
 
     # ---------- core ----------
-    def _decide(self, action: str, request: dict, entities: list[dict]) -> Decision:
+    def _decide(self, action: str, request: dict, entities: list[dict], extra: dict | None = None) -> Decision:
         res = cedarpy.is_authorized(request, self.policies, entities, self.schema)
         ids = [str(p) for p in res.diagnostics.reasons]
         errors = [str(e) for e in res.diagnostics.errors]
         named = [self.annotations.get(i, {}).get("id", i) for i in ids]
-        reasons = [format_reason(self.annotations.get(i, {}).get("reason", ""), self.hh) for i in ids]
-        hinglish = [format_reason(self.annotations.get(i, {}).get("hinglish", ""), self.hh) for i in ids]
+        order = sorted(range(len(named)), key=lambda i: (named[i] not in SAFETY_POLICIES, i))
+        ids, named = [ids[i] for i in order], [named[i] for i in order]
+        reasons = [format_reason(self.annotations.get(i, {}).get("reason", ""), self.hh, extra) for i in ids]
+        hinglish = [format_reason(self.annotations.get(i, {}).get("hinglish", ""), self.hh, extra) for i in ids]
         allowed = res.allowed
         if not allowed and not ids:
             named, reasons, hinglish = ["default-deny"], ["No policy permits this."], ["Iski permission nahi hai."]
         return Decision(action, allowed, named, reasons, hinglish, request=request, errors=errors)
 
-    def evaluate_line(self, member: Member, product: dict, quantity: int, today: int | None = None) -> Decision:
+    def evaluate_line(self, member: Member, product: dict, quantity: int, today: int | None = None,
+                      beneficiary: Member | None = None, order_caffeine_mg: int | None = None) -> Decision:
+        """beneficiary: the member the item is FOR (default the buyer). Dietary policies check them.
+        order_caffeine_mg: caffeine of every caffeinated line for that beneficiary (default: this line)."""
+        b = beneficiary or member
+        caffeine = int(product.get("caffeine_mg_per_serving") or 0)
         req = {
             "principal": {"type": "Member", "id": member.id},
             "action": {"type": "Action", "id": "purchase_item"},
             "resource": {"type": "Product", "id": product["id"]},
             "context": {"quantity": int(quantity), "line_total_inr": int(quantity * product["price_inr"]),
-                        "today": _today(today)},
+                        "today": _today(today), "beneficiary": {"__entity": {"type": "Member", "id": b.id}},
+                        "order_caffeine_mg": int(order_caffeine_mg if order_caffeine_mg is not None
+                                                 else caffeine * int(quantity))},
         }
-        return self._decide("purchase_item", req, self._base_entities(member) + [self._product_entity(product)])
+        entities = self._base_entities(member) + [self._product_entity(product)]
+        if b.id != member.id:
+            entities.append(self._member_entity(b))
+        hit = sorted({str(a) for a in product.get("allergens") or []} & {str(a) for a in b.allergies or []})
+        extra = {"for": b.display, "allergens": ", ".join(a.replace("_", " ") for a in hit) or "an allergen",
+                 "vrat_until": b.vrat_until or "", "caffeine_cap": b.max_caffeine_mg if b.max_caffeine_mg is not None else 100}
+        return self._decide("purchase_item", req, entities, extra)
 
     def evaluate_payment(
         self,

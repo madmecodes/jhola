@@ -46,7 +46,7 @@ def test_households_listing_is_key_guarded_and_masks_phones(world):
     assert mine["member_count"] == 2 and mine["admins"] == ["+91******0001"] and not mine["demo"]
     assert PRIYA not in str(hs) and SUNITA not in str(hs)
     demo = next(h for h in hs if h["household_id"] == DEMO_HOUSEHOLD_ID)
-    assert demo["demo"] and demo["member_count"] == 4 and demo["admins"] == ["+91******0001"]
+    assert demo["demo"] and demo["member_count"] == 5 and demo["admins"] == ["+91******0001"]
 
 
 def test_default_household_is_the_demo_and_others_need_the_key(world):

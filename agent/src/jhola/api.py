@@ -45,6 +45,7 @@ LIMITS = {
     "house_help": "Staples, dairy, vegetables, fruits and cleaning only. Max Rs {daily} per day. "
                   "Max 5 units per item.",
     "teen": "Stationery and snacks only. No energy drinks. Max 5 units per item.",
+    "elder": "Any category. Auto-pay up to Rs {thr} per order, above that Mom approves. Max 5 units per item.",
 }
 
 
@@ -157,6 +158,8 @@ class ConsoleApi:
                 "reason_hinglish": "; ".join(r for r in l.get("reasons_hinglish", []) if r),
                 "amazon_search_url": p.get("amazon_search_url", ""), "fulfilment": p.get("fulfilment", ""),
                 "category": p.get("category", l.get("category")),
+                "for_member": app.hh.display_of(l["for_member"]) if l.get("for_member") else None,
+                "suggested_substitute": (l.get("suggested_substitute") or {}).get("label"),
             })
         txn = o.get("txn") or {}
         extra = {}
@@ -217,7 +220,9 @@ class ConsoleApi:
             return limits_text(m, app.hh)
 
         members = [{"id": m.id, "name": m.name, "display": m.display, "role": m.role,
-                    "phone_masked": mask_phone(m.phone), "limits_summary": summary(m)} for m in app.hh.members]
+                    "phone_masked": mask_phone(m.phone), "limits_summary": summary(m),
+                    "diet_profile": m.diet_profile, "allergies": m.allergies, "vrat_until": m.vrat_until,
+                    "max_caffeine_mg": m.max_caffeine_mg, "diet_summary": m.diet_text()} for m in app.hh.members]
         rules = [{**r, "title_en": format_reason(r["title_en"], app.hh),
                   "title_hinglish": format_reason(r["title_hinglish"], app.hh), "active": True}
                  for r in rules_mod.base_rules()]

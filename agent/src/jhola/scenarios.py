@@ -1,4 +1,4 @@
-"""Demo scenarios A-F.
+"""Demo scenarios A-H.
 
     uv run python -m jhola.scenarios            # all, scripted stub model (offline)
     uv run python -m jhola.scenarios C E        # selected
@@ -27,7 +27,8 @@ from .stub_model import Call, Say, ScriptedModel
 from .store import InMemoryRepository
 from .vision import FixtureVisionReader
 
-MOM, DAD, DIDI, TEEN = "+919999900001", "+919999900002", "+919999900003", "+919999900004"
+MOM, DAD, DIDI, TEEN, DADI = ("+919999900001", "+919999900002", "+919999900003", "+919999900004",
+                              "+919999900005")
 
 
 # ---------- helpers the scripted "model" uses (what an LLM would infer) ----------
@@ -57,7 +58,12 @@ def compose_reply(res: dict, hinglish: bool = True) -> str:
     for b in res.get("blocked_lines", []):
         why = (b["reasons_hinglish"] if hinglish else b["reasons"])[0]
         out.append(f"- BLOCKED {b['label'].split(' (Rs')[0]} x{b['qty']}: {why}")
+        if b.get("suggested_substitute"):
+            sub = b["suggested_substitute"]["label"]
+            out.append(f"  Iski jagah {sub} le loon?" if hinglish else f"  Instead: {sub}. Want that?")
     st = res.get("status")
+    if st == "needs_confirmation":
+        return res["question"]
     if st == "paid":
         p = res["payment"]
         tail = f"Total Rs {p['amount_inr']}. Paid via UPI AutoPay, ref {p['upi_ref']} (SIMULATED)."
@@ -130,6 +136,39 @@ def script_f():
     cart = yield Call("build_cart", {"items": cart_items(resolved)})
     res = yield Call("submit_order", {"order_id": cart[0]["order_id"]})
     yield Say("Didi, aapki list:\n" + compose_reply(res[0]))
+
+
+def script_g():
+    """Didi orders namkeen for Dadi. Turn 1: the usual mixture is blocked (Dadi is Jain), the Jain mixture
+    is offered. Turn 2 (script_g2): Didi says yes and it is ordered."""
+    r = yield Call("resolve_item", {"query": "haldiram navratan mixture", "quantity": 1, "for_member": "Dadi"})
+    cart = yield Call("build_cart", {"items": [{"sku": r[0]["sku"], "qty": 1}], "for_member": "Dadi"})
+    res = yield Call("submit_order", {"order_id": cart[0]["order_id"]})
+    yield Say("Dadi ke liye:\n" + compose_reply(res[0]))
+
+
+def script_g2():
+    found = yield Call("search_catalog", {"query": "jain mixture", "category": "snacks"})
+    sku = found[0]["results"][0]["sku"]
+    cart = yield Call("build_cart", {"items": [{"sku": sku, "qty": 1}], "for_member": "Dadi"})
+    res = yield Call("submit_order", {"order_id": cart[0]["order_id"]})
+    yield Say("Dadi ke liye Jain mixture:\n" + compose_reply(res[0]))
+
+
+def script_h():
+    resolved = yield [Call("resolve_item", {"query": "peanut butter", "quantity": 1}),
+                      Call("resolve_item", {"query": "snickers", "quantity": 1})]
+    cart = yield Call("build_cart", {"items": cart_items(resolved)})
+    res = yield Call("submit_order", {"order_id": cart[0]["order_id"]})
+    yield Say(compose_reply(res[0], hinglish=False).replace("BLOCKED", "Not allowed:"))
+
+
+def script_h2():
+    found = yield Call("search_catalog", {"query": "dairy milk", "category": "snacks"})
+    sku = found[0]["results"][0]["sku"]
+    cart = yield Call("build_cart", {"items": [{"sku": sku, "qty": 1}]})
+    res = yield Call("submit_order", {"order_id": cart[0]["order_id"]})
+    yield Say(compose_reply(res[0], hinglish=False))
 
 
 # ---------- runner ----------
@@ -219,6 +258,24 @@ def run_f(c: Ctx):
     show_reply("Didi", c.agent.handle_message(DIDI, msg, model=c.model(script_f)))
 
 
+def run_g(c: Ctx):
+    msg = "Dadi ke liye ek packet Haldiram navratan mixture bhej do"
+    say("Didi", msg)
+    show_reply("Didi", c.agent.handle_message(DIDI, msg, model=c.model(script_g)))
+    msg2 = "Haan, Jain mixture theek hai, wahi bhej do Dadi ke liye"
+    say("Didi", msg2)
+    show_reply("Didi", c.agent.handle_message(DIDI, msg2, model=c.model(script_g2)))
+
+
+def run_h(c: Ctx):
+    msg = "Get me a peanut butter jar and a Snickers"
+    say("Aarav", msg)
+    show_reply("Aarav", c.agent.handle_message(TEEN, msg, model=c.model(script_h)))
+    msg2 = "ok, the Dairy Milk then"
+    say("Aarav", msg2)
+    show_reply("Aarav", c.agent.handle_message(TEEN, msg2, model=c.model(script_h2)))
+
+
 SCENARIOS = [
     Scenario("A", "Didi sends a parchi photo -> auto-paid", run_a),
     Scenario("B", "Teen asks for Red Bull + geometry box -> energy drinks denied", run_b),
@@ -226,6 +283,10 @@ SCENARIOS = [
     Scenario("D", "Sunday refill prediction -> proposal to Mom -> Mom confirms", run_d),
     Scenario("E", "Prompt injection in a product description -> Cedar blocks", run_e),
     Scenario("F", "Mandate nearly exhausted -> blocked, Mom asked to top up", run_f, month_spent_inr=4800),
+    Scenario("G", "Didi orders namkeen for Dadi (Jain) -> mixture with onion/garlic blocked, Jain mixture ordered",
+             run_g),
+    Scenario("H", "Teen (peanut allergy) asks for peanut butter and Snickers -> blocked, safe chocolate ordered",
+             run_h),
 ]
 
 

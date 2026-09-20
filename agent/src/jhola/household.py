@@ -84,6 +84,8 @@ class Directory:
                                   {"household_id": DEMO_HOUSEHOLD_ID, "member_id": m["id"], "demo": False})
             self.seed_demo_preferences()
             self.repo.put("households", DEMO_HOUSEHOLD_ID, profile)
+        else:
+            self._upgrade_demo()
         admin_phone = to_e164(config.ADMIN_PHONE)
         if self.repo.get("phones", admin_phone) is None:  # JHOLA_ADMIN_PHONE changed since the seed
             self.repo.put_new("phones", admin_phone, {"household_id": DEMO_HOUSEHOLD_ID, "member_id": "mom",
@@ -96,6 +98,23 @@ class Directory:
                                                 "demo": True})
             elif doc["household_id"] == DEMO_HOUSEHOLD_ID and not doc.get("demo"):
                 self.repo.put("phones", p, {**doc, "demo": True})
+
+    def _upgrade_demo(self) -> None:
+        """An already seeded demo household gets members added to the seed later (Dadi) and the seed's
+        dietary fields for members that never had them. Nothing the admin changed is overwritten."""
+        sr = self.scoped(DEMO_HOUSEHOLD_ID)
+        for m in demo_household_raw()["members"]:
+            stored = sr.get("members", m["id"])
+            if stored is None:
+                phone = Member.from_doc(m).phone
+                if self.repo.get("phones", phone) is None and self.repo.put_new(
+                        "phones", phone, {"household_id": DEMO_HOUSEHOLD_ID, "member_id": m["id"], "demo": False}):
+                    sr.put("members", m["id"], {**Member.from_doc(m).to_doc(), "phone": m["phone"],
+                                                "added_at": self.clock.now().isoformat()})
+            elif "diet_profile" not in stored:
+                seed = Member.from_doc(m).to_doc()
+                sr.put("members", m["id"], {**stored, **{k: seed[k] for k in
+                                                        ("diet_profile", "allergies", "vrat_until", "max_caffeine_mg")}})
 
     def seed_demo_preferences(self) -> None:
         sr = self.scoped(DEMO_HOUSEHOLD_ID)

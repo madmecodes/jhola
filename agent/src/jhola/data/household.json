@@ -33,7 +33,17 @@
    "display": "Aarav",
    "role": "teen",
    "phone": "+919999900004",
-   "language": "english"
+   "language": "english",
+   "allergies": ["peanut"]
+  },
+  {
+   "id": "dadi",
+   "name": "Shanti Devi",
+   "display": "Dadi",
+   "role": "elder",
+   "phone": "+919999900005",
+   "language": "hindi",
+   "diet_profile": "jain"
   }
  ],
  "mandate": {

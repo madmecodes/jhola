@@ -80,7 +80,7 @@ def fake_llm(system, user):
 def test_household_shape(api):
     h = call(api, "GET", "/api/household")
     assert h["household"]["name"] == "Gupta family"
-    assert {m["id"] for m in h["members"]} == {"mom", "dad", "didi", "teen"}
+    assert {m["id"] for m in h["members"]} == {"mom", "dad", "didi", "teen", "dadi"}
     assert all("******" in m["phone_masked"] for m in h["members"])
     assert any(r["id"] == "teen-no-energy-drinks" and r["source"] == "base" and "forbid" in r["cedar"]
                for r in h["rules"])
@@ -184,6 +184,7 @@ def test_activate_rejects_invalid(api):
     ("injection", "max-qty-per-line"),
     ("overspend", "house-help-daily-cap"),
     ("forbidden_category", "teen-no-energy-drinks"),
+    ("allergen_bypass", "allergy"),
 ])
 def test_redteam_blocked_and_sandboxed(api, attack, policy):
     r = call(api, "POST", "/api/redteam", {"attack": attack})

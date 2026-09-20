@@ -1228,7 +1228,7 @@ PROFILES = {
     "namkeen_moong_dal": prof((520, 23.0, 40.0, 2.0, 30.0, 12.0, 5.0, 650), (30, "g"), "vgj",
                               contains="palm_oil,added_salt", shelf=120),
     "namkeen_mix": prof((540, 13.0, 45.0, 5.0, 35.0, 15.0, 5.0, 800), (30, "g"), "vg",
-                        "peanut,tree_nut", contains="palm_oil,added_salt", shelf=120),
+                        "peanut,tree_nut", contains="onion,garlic,palm_oil,added_salt", shelf=120),
     "namkeen_khatta_meetha": prof((520, 12.0, 55.0, 15.0, 28.0, 12.0, 4.0, 700), (30, "g"), "vg",
                                   "peanut,tree_nut", contains="palm_oil,added_sugar", shelf=120),
     "namkeen_jain": prof((525, 16.0, 44.0, 3.0, 33.0, 14.0, 6.0, 780), (30, "g"), "vgj",

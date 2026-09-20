@@ -14,6 +14,7 @@ from strands.models.model import Model
 from strands.tools.executors import SequentialToolExecutor
 
 from . import config
+from . import products
 from .admin import HouseholdAdmin, NotAllowed, limits_text
 from .domain import Member, describe, suspicious
 from .orders import Jhola, Outbound
@@ -25,6 +26,7 @@ SYSTEM_PROMPT = """You are Jhola, the WhatsApp kirana (grocery) ordering assista
 You are talking to {name} ({role}). Today is {today} ({weekday}). Preferred language: {language}.
 What {name} may do: {limits}.
 Household admin: {admin}. Members: {members}.
+Dietary profiles: {diets}
 
 How you work:
 - Turn what the member asks for (typed list, parchi photo, recipe, or "the usual") into a cart.
@@ -38,6 +40,17 @@ How you work:
 - Usual brands are learned: resolve_item uses what this household chose before, otherwise a sensible default.
   When the member picks a specific product for a generic word ("atta Aashirvaad wala", "nahi, Amul ka doodh"),
   find it with search_catalog and call remember_choice(word, sku) so it is used next time.
+- Ordering for someone else ("Dadi ke liye namkeen", "for Aarav"): pass for_member to resolve_item and build_cart.
+  The rules engine checks that person's diet, allergies, vrat and caffeine limits. When a line is blocked for a
+  dietary reason, say why in one line and offer the suggested_substitute; order it only if the member says yes.
+- Product questions ("paneer mein kitna protein hai", "koi sugar free biscuit?", "sasta wala atta per kg?"):
+  use get_product_details, compare_products and find_alternatives. Quote numbers as approximate ("approx 18 g
+  protein per 100 g"), at most 3 items, one line each. If a pack of the same product is more than 10% cheaper
+  per unit (better_value_pack), mention it in one line; do not switch packs unless asked. Never give medical or
+  diet advice: for health questions add one line "Yeh label ki jaankari hai, doctor ki salah nahi."
+- build_cart may return probably_at_home (bought recently, likely still there): mention it in one line, still
+  order what was asked unless told otherwise. If submit_order returns needs_confirmation, someone in the family
+  just ordered the same thing: relay its question as is; the member answers with the Yes / No buttons.
 {admin_help}
 - Leaving or deleting data: tell the member to send exactly "delete my data".
 
@@ -61,7 +74,9 @@ ADMIN_HELP = """- You are talking to the admin, who can manage the household in 
   the templates do not cover, like "no chocolate", in custom_conditions), change a limit, change the monthly budget or
   approval limit, add a rule in plain words (propose_rule), list or remove rules, delegate temporarily
   ("Didi can spend 1500 this week" -> propose_delegation with until_date = the last day meant, as YYYY-MM-DD),
-  list members and see this month's spending. Every propose_* tool only PREPARES the change: the admin then gets
+  list members and see this month's spending, set a member's diet ("Dadi is Jain", "Aarav is allergic to peanuts",
+  "Navratri vrat for Mom till 2 Oct", "no more than one energy drink for Aarav" -> propose_diet_change).
+  Every propose_* tool only PREPARES the change: the admin then gets
   Yes / No buttons. Never say a change is done after a propose_* call. One change per message."""
 
 MEMBER_HELP = """- Only the admin can manage members, limits, rules or the budget. If this member asks for that, call
@@ -80,6 +95,7 @@ class Turn:
     draft_order: str | None = None
     meta: dict = field(default_factory=dict)  # channel / input_type, stamped on orders
     confirm: dict | None = None  # pending admin action prepared in this turn (shown with Yes / No buttons)
+    confirm_duplicates: str | None = None  # draft order held because the family just ordered the same item
 
 
 def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) -> list:
@@ -132,18 +148,92 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) ->
 
     @tool
     def resolve_item(query: str, quantity: int | None = None, amount: float | None = None,
-                     unit: str | None = None) -> dict:
-        """Resolve one list item to the household's usual product (brand + pack size).
+                     unit: str | None = None, for_member: str | None = None) -> dict:
+        """Resolve one list item to the household's usual product (brand + pack size), and pre-check it
+        against the household rules for the member it is for (diet, allergies, category).
 
         Args:
             query: item as written, e.g. "doodh", "atta", "pyaaz", "rajma".
             quantity: number of packs if the member said so.
             amount: required amount (e.g. 750) when coming from a recipe.
             unit: unit for amount: g, kg, ml, l, pcs.
+            for_member: who the item is for when it is someone else ("Dadi ke liye" -> "Dadi"); default self.
         """
         r = app.resolver.resolve(query, quantity, amount, unit)
+        if r.get("resolved"):
+            p = app.catalog.get(r["sku"])
+            chk = app.check_line(member, p, r["qty"], for_member)
+            if not chk["allowed"]:
+                r["rules_check"] = {**chk, "note": "this line will be BLOCKED by the household rules; offer the "
+                                                    "suggested_substitute if there is one"}
+                log("policy_precheck", actor="cedar", member=member.id, sku=r["sku"], for_member=chk["for"],
+                    policy_ids=chk["policy_ids"])
+            bv = products.better_value(app.catalog, p)
+            if bv:
+                r["better_value_pack"] = bv
         log("item_resolved", actor="jhola", member=member.id, **r)
-        return record("resolve_item", {"query": query, "quantity": quantity, "amount": amount, "unit": unit}, r)
+        return record("resolve_item", {"query": query, "quantity": quantity, "amount": amount, "unit": unit,
+                                       "for_member": for_member}, r)
+
+    @tool
+    def get_product_details(sku_or_query: str) -> dict:
+        """Details of one product: price, unit price, nutrition (approximate), diet flags, allergens,
+        caffeine, fulfilment, Amazon search link, and a cheaper pack of the same product if there is one.
+
+        Args:
+            sku_or_query: a sku from search_catalog / resolve_item, or words like "amul paneer".
+        """
+        p = app.catalog.get(sku_or_query) or next(iter(app.catalog.search(sku_or_query, limit=1)), None)
+        if not p:
+            return record("get_product_details", {"sku_or_query": sku_or_query}, {"error": "no matching product"})
+        return record("get_product_details", {"sku_or_query": sku_or_query}, products.details(app.catalog, p))
+
+    @tool
+    def compare_products(skus_or_queries: list[str]) -> dict:
+        """Compare 2 to 5 products: protein per rupee, sugar, sodium, unit price (approximate label data).
+
+        Args:
+            skus_or_queries: skus or product words, e.g. ["amul paneer", "milky mist paneer"].
+        """
+        found = []
+        for q in skus_or_queries[:5]:
+            p = app.catalog.get(q) or next(iter(app.catalog.search(q, limit=1)), None)
+            if p and p not in found:
+                found.append(p)
+        if len(found) < 2:
+            return record("compare_products", {"skus_or_queries": skus_or_queries},
+                          {"error": "need at least two products that exist in the catalog"})
+        return record("compare_products", {"skus_or_queries": skus_or_queries}, products.compare(app.catalog, found))
+
+    @tool
+    def find_alternatives(sku_or_query: str, sugar_free: bool = False, high_protein: bool = False,
+                          jain: bool = False, vegan: bool = False, vrat: bool = False,
+                          cheaper_per_unit: bool = False, max_price: int | None = None,
+                          for_member: str | None = None) -> dict:
+        """Find products like the given one that meet constraints, e.g. a sugar-free biscuit, a Jain namkeen,
+        a cheaper atta per kg, a high-protein dal. Allergies of the member it is for are always respected.
+
+        Args:
+            sku_or_query: the product or the kind of product ("biscuit", "namkeen", "atta").
+            sugar_free: no added sugar.
+            high_protein: at least 10 g protein per 100 g.
+            jain: no onion, garlic or root vegetables.
+            vegan: no dairy, egg or honey.
+            vrat: allowed during a Navratri fast.
+            cheaper_per_unit: lower price per kg / litre than the given product.
+            max_price: maximum price in rupees.
+            for_member: who it is for (default self); their allergies are excluded.
+        """
+        b = app.beneficiary(member, for_member)
+        base = app.catalog.get(sku_or_query) or next(iter(app.catalog.search(sku_or_query, limit=1)), None)
+        rows = products.alternatives(app.catalog, base, sku_or_query, sugar_free, high_protein, jain, vegan, vrat,
+                                     cheaper_per_unit, max_price, avoid_allergens=b.allergies)
+        args = {"sku_or_query": sku_or_query, "sugar_free": sugar_free, "high_protein": high_protein, "jain": jain,
+                "vegan": vegan, "vrat": vrat, "cheaper_per_unit": cheaper_per_unit, "max_price": max_price,
+                "for_member": for_member}
+        return record("find_alternatives", args, {"for": b.display, "base": describe(base) if base else None,
+                                                  "alternatives": rows,
+                                                  "disclaimer": "approximate label values, not medical advice"})
 
     @tool
     def check_pantry(items: list[str]) -> dict:
@@ -170,26 +260,28 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) ->
         return record("expand_recipe", {"dish": dish, "servings": servings}, r)
 
     @tool
-    def build_cart(items: list[dict]) -> dict:
+    def build_cart(items: list[dict], for_member: str | None = None) -> dict:
         """Create a draft order from resolved items.
 
         Args:
-            items: list of {"sku": "<sku from resolve_item>", "qty": <int>}.
+            items: list of {"sku": "<sku from resolve_item>", "qty": <int>, "for_member": "<optional name>"}.
+            for_member: who the whole cart is for when it is someone else ("Dadi"); default self.
         """
         # Remember which generic word each product came from, so the household can learn its usual brand.
         asked = {c["output"]["sku"]: c["output"] for c in turn.calls
                  if c["tool"] == "resolve_item" and c["output"].get("resolved")}
         items = [{**it, "query": asked[it["sku"]]["query"], "source": asked[it["sku"]]["source"]}
                  if isinstance(it, dict) and it.get("sku") in asked else it for it in items]
-        order = app.build_cart(member, items, meta=turn.meta)
+        order = app.build_cart(member, items, meta=turn.meta, for_member=for_member)
         turn.order_ids.append(order["order_id"])
         turn.draft_order = order["order_id"]
-        return record("build_cart", {"items": items}, order)
+        return record("build_cart", {"items": items, "for_member": for_member}, order)
 
     @tool
     def submit_order(order_id: str) -> dict:
         """Submit a draft order. The household rules engine (Cedar) checks every line and the payment,
-        then either auto-pays via the UPI mandate, asks the admin for approval, or denies.
+        then either auto-pays via the UPI mandate, asks the admin for approval, or denies. If someone in the
+        family just ordered the same item it returns needs_confirmation with a question for the member.
 
         Args:
             order_id: id returned by build_cart.
@@ -198,6 +290,8 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) ->
         turn.last_submit = res
         if res.get("status") in ("paid", "pending_approval", "denied"):
             turn.draft_order = None
+        elif res.get("status") == "needs_confirmation":
+            turn.confirm_duplicates = order_id
         return record("submit_order", {"order_id": order_id}, res)
 
     @tool
@@ -250,7 +344,8 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) ->
         return record("spending_summary", {}, s)
 
     base = [read_parchi_image, search_catalog, resolve_item, check_pantry, expand_recipe, build_cart,
-            submit_order, predict_refill, remember_choice, set_language_preference, spending_summary]
+            submit_order, predict_refill, remember_choice, set_language_preference, spending_summary,
+            get_product_details, compare_products, find_alternatives]
 
     def guarded(name: str, args: dict, fn) -> dict:
         """Run an admin operation. Refusals are decided in code (admin.py) and audited there."""
@@ -387,8 +482,30 @@ def make_tools(app: Jhola, turn: Turn, vision: VisionReader | None, llm=None) ->
         return guarded("propose_delegation", args,
                        lambda: hadmin.propose_delegation(member, member_name, amount_inr, until_date))
 
+    @tool
+    def propose_diet_change(member_name: str, diet_profile: str | None = None, add_allergies: list[str] | None = None,
+                            remove_allergies: list[str] | None = None, vrat_until: str | None = None,
+                            max_caffeine_mg: int | None = None) -> dict:
+        """Prepare a member's dietary profile (the admin confirms with Yes / No). The rules engine then blocks
+        items that violate it, also when someone else orders for that member.
+
+        Args:
+            member_name: the member's name ("Dadi", "Aarav", "Mom" = the admin themselves).
+            diet_profile: "veg", "vegan", "jain", "eggetarian" or "none" to clear ("Dadi is Jain" -> jain).
+            add_allergies: allergens to add, in the admin's words ("peanuts", "moongfali", "milk", "gluten").
+            remove_allergies: allergens to remove.
+            vrat_until: last day of a fast as YYYY-MM-DD ("Navratri vrat till 2 Oct" -> 2026-10-02); "none" clears.
+            max_caffeine_mg: caffeine allowed per order; "no more than one energy drink" -> 80,
+                one coffee or cola -> 65, 0 = no caffeinated drinks at all, -1 removes the limit.
+        """
+        args = {"member_name": member_name, "diet_profile": diet_profile, "add_allergies": add_allergies,
+                "remove_allergies": remove_allergies, "vrat_until": vrat_until, "max_caffeine_mg": max_caffeine_mg}
+        return guarded("propose_diet_change", args, lambda: hadmin.propose_diet_change(
+            member, member_name, diet_profile, add_allergies, remove_allergies, vrat_until, max_caffeine_mg))
+
     return base + [list_members, propose_add_member, propose_remove_member, propose_change_limit,
-                   propose_budget_change, propose_rule, list_rules, propose_remove_rule, propose_delegation]
+                   propose_budget_change, propose_rule, list_rules, propose_remove_rule, propose_delegation,
+                   propose_diet_change]
 
 
 def bedrock_model() -> Model:
@@ -438,10 +555,11 @@ class JholaAgent:
     def _system_prompt(self, m: Member) -> str:
         now, hh = self.app.clock.now(), self.app.hh
         admin_help = ADMIN_HELP if m.role == "admin" else MEMBER_HELP.format(admin=hh.admin_label())
+        diets = "; ".join(f"{x.display}: {x.diet_text()}" for x in hh.members if x.diet_text()) or "none set"
         return SYSTEM_PROMPT.format(
             household=hh.name, name=m.display, role=m.role, today=now.date().isoformat(),
             weekday=now.strftime("%A"), language=m.language, limits=limits_text(m, hh), admin=hh.admin_label(),
-            members=", ".join(f"{x.display} ({x.role})" for x in hh.members), admin_help=admin_help)
+            members=", ".join(f"{x.display} ({x.role})" for x in hh.members), admin_help=admin_help, diets=diets)
 
     def handle_message(self, sender_phone: str, text: str | None = None, image_bytes: bytes | None = None,
                        media_type: str | None = None, model: Model | None = None, channel: str = "whatsapp",
@@ -481,6 +599,12 @@ class JholaAgent:
             reply_text = turn.confirm["summary"]
             buttons = [{"id": f"confirm:{turn.confirm['action_id']}", "title": "Yes"},
                        {"id": f"cancel:{turn.confirm['action_id']}", "title": "No"}]
+        elif turn.confirm_duplicates:
+            # Family cart merge: the question is written by code, so it says exactly what the family ordered.
+            order = app.get_order(turn.confirm_duplicates) or {}
+            reply_text = app.duplicate_text(order) if order.get("duplicates") else reply_text
+            buttons = [{"id": f"dupyes:{turn.confirm_duplicates}", "title": "Yes, order"},
+                       {"id": f"dupno:{turn.confirm_duplicates}", "title": "No, skip"}]
         elif turn.draft_order and member.role == "admin":
             buttons = [{"id": f"order:{turn.draft_order}", "title": "Order all"},
                        {"id": "edit", "title": "Change list"}]
@@ -521,14 +645,25 @@ class JholaAgent:
             except NotAllowed as e:
                 text = str(e)
             return Reply(text, [], self.app.drain_outbox())
-        if kind == "order":
+        if kind in ("order", "dupyes", "dupno"):
             member = self.app.hh.member_by_phone(phone)
             if member is None:
                 return Reply("Sorry, this number is not part of a Jhola household.")
-            res = self.app.submit_order(member, ref)
+            if kind == "dupno":
+                res = self.app.drop_duplicates(member, ref)
+            else:
+                res = self.app.submit_order(member, ref, confirm_duplicates=(kind == "dupyes"))
+            if res.get("status") == "needs_confirmation":
+                return Reply(res["question"], [{"id": f"dupyes:{ref}", "title": "Yes, order"},
+                                               {"id": f"dupno:{ref}", "title": "No, skip"}],
+                             self.app.drain_outbox(), [ref])
             text = f"Order {ref}: {res['status']}."
             if res.get("payment"):
                 text += f" Rs {res['payment']['amount_inr']} paid, UPI ref {res['payment']['upi_ref']} (SIMULATED)."
+            elif res.get("status") == "cancelled":
+                text = f"Theek hai, {ref} cancel kar diya; family ne pehle hi order kar liya tha."
+            elif res.get("blocked_lines") and res.get("status") == "denied":
+                text += " " + "; ".join(b["reasons_hinglish"][0] for b in res["blocked_lines"] if b.get("reasons_hinglish"))
             return Reply(text, [], self.app.drain_outbox(), [ref])
         if kind == "topup":
             admin = self.app.hh.member_by_phone(phone)

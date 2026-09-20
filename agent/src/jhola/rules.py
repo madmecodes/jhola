@@ -191,7 +191,13 @@ Roles: admin, adult, elder, house_help, teen.
 Product categories: {categories}.
 Product attrs: name (String, e.g. "Dairy Milk Silk"), brand (String, e.g. "Cadbury"), category (String),
 tags (Set<String>, lowercase words such as {tags}), price_inr (Long),
-seller_rating (decimal: resource.seller_rating.lessThan(decimal("4.0"))). Amounts are whole rupees (Long).
+seller_rating (decimal: resource.seller_rating.lessThan(decimal("4.0"))), is_food, veg, vegan, jain_friendly,
+vrat_friendly (Bool), allergens and contains (Set<String>: "peanut", "milk", "gluten", "onion", "garlic",
+"added_sugar", "caffeine", "palm_oil"), caffeine_mg (Long per serving). Amounts are whole rupees (Long).
+purchase_item context also has beneficiary (the Member the item is FOR, e.g. context.beneficiary == Member::"dadi"
+or context.beneficiary.role == "elder") and order_caffeine_mg (Long). Members have diet_profile (String) and
+allergies (Set<String>); the base policies already enforce them, so only write a rule for something extra
+("no added sugar for Dadi": resource.contains.contains("added_sugar") && context.beneficiary == Member::"dadi").
 Cedar syntax reminders: set membership is resource.tags.contains("chocolate"); wildcard match is the `like`
 OPERATOR, e.g. resource.name like "*Chocolate*" (never .like(...)); strings compare with ==; there is no
 lower(), regex or string concatenation. Prefer tags over name matching.

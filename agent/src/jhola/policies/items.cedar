@@ -36,7 +36,20 @@ when {
   principal.role == "house_help" &&
   !["staples", "dairy", "vegetables", "fruits", "cleaning"].contains(resource.category)
 }
-unless { principal has allowed_categories };
+unless { principal has allowed_categories }
+unless {
+  context.beneficiary != principal && context.beneficiary.role == "elder" &&
+  ["snacks", "beverages", "personal_care"].contains(resource.category)
+};
+
+@id("house-help-for-elder")
+@reason("House help may order snacks, beverages and personal care for an elder of the house.")
+@hinglish("Didi bade-buzurgon ke liye namkeen, peene ka aur personal care ka saamaan la sakti hain.")
+permit (principal, action == Action::"purchase_item", resource)
+when {
+  principal.role == "house_help" && context.beneficiary != principal && context.beneficiary.role == "elder" &&
+  ["snacks", "beverages", "personal_care"].contains(resource.category)
+};
 
 @id("teen-category-scope")
 @reason("Teens can order stationery and snacks.")
@@ -61,7 +74,7 @@ unless { principal has allowed_categories };
 @reason("Energy drinks are not allowed for teens.")
 @hinglish("Energy drink bachchon ke liye mana hai.")
 forbid (principal, action == Action::"purchase_item", resource)
-when { principal.role == "teen" && resource.category == "energy_drinks" };
+when { (principal.role == "teen" || context.beneficiary.role == "teen") && resource.category == "energy_drinks" };
 
 @id("min-seller-rating")
 @reason("Seller rating is below 4.0.")

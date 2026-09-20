@@ -14,6 +14,11 @@ entity Member in [Household] {
   // Temporary delegation ("Didi can spend 1500 this week"): valid while context.today <= delegated_until.
   delegated_cap_inr?: Long,
   delegated_until?: Long, // yyyymmdd
+  // Dietary profile (checked against the member the order is FOR, context.beneficiary).
+  diet_profile: String, // none | veg | vegan | jain | eggetarian
+  allergies: Set<String>, // peanut, tree_nut, milk, gluten, soy, egg, sesame, mustard
+  vrat_until?: Long, // yyyymmdd: fasting (vrat) mode until this date, only vrat_friendly food
+  max_caffeine_mg?: Long, // caffeine allowed per order (one energy drink is about 80 mg)
 };
 
 entity Product {
@@ -23,6 +28,16 @@ entity Product {
   tags: Set<String>, // lowercase English / Hinglish words, e.g. "chocolate", "atta", "energy"
   price_inr: Long,
   seller_rating: decimal,
+  // From the catalog's diet / allergen data (false / empty for non-food).
+  is_food: Bool,
+  veg: Bool,
+  vegan: Bool,
+  jain_friendly: Bool, // no onion, garlic, root vegetables
+  vrat_friendly: Bool, // allowed during a Navratri fast
+  eggetarian_only: Bool, // the only non-veg part is egg
+  allergens: Set<String>,
+  contains: Set<String>, // onion, garlic, added_sugar, caffeine, palm_oil, ...
+  caffeine_mg: Long, // per serving, 0 if none
 };
 
 entity Mandate {
@@ -38,6 +53,8 @@ action purchase_item appliesTo {
     quantity: Long,
     line_total_inr: Long,
     today: Long, // yyyymmdd in IST, e.g. 20260920
+    beneficiary: Member, // the member the item is FOR (the principal unless "Dadi ke liye")
+    order_caffeine_mg: Long, // caffeine in this order for the beneficiary (all caffeinated lines)
   },
 };
 

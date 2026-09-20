@@ -15,7 +15,7 @@ first thing when they next message Jhola.
 DEMO FEATURE (persona switch), only for phones flagged demo=true in the directory (the owner, seeded
 from JHOLA_DEMO_PHONES) and hidden from /help for everyone else: one real phone acts as any member of
 the seeded Gupta family (household demo-gupta).
-  /as mom | /as dad | /as didi | /as teen   act as that member (persisted per phone)
+  /as mom | /as dad | /as didi | /as teen | /as dadi   act as that member (persisted per phone)
   /whoami                                   show the acting member
   /reset                                    reset demo state (mandate usage, orders, history)
 Messages for demo members whose phone is a placeholder are delivered to the demo phones, labelled.
@@ -39,7 +39,7 @@ log = logging.getLogger("jhola.whatsapp")
 
 META_API_VERSION = "v20.0"
 PLACEHOLDER_PREFIX = "+9199999"  # demo household members without a real phone
-PERSONAS = {"mom": "mom", "dad": "dad", "didi": "didi", "teen": "teen", "aarav": "teen"}
+PERSONAS = {"mom": "mom", "dad": "dad", "didi": "didi", "teen": "teen", "aarav": "teen", "dadi": "dadi"}
 MAX_TEXT = 4000
 MAX_BUTTON_BODY = 1000
 
@@ -55,7 +55,7 @@ LEAVE_RE = re.compile(r"^\s*(please\s+)?(delete (all )?my data|leave( jhola| hou
 
 DEMO_HELP = (
     "*Jhola demo commands*\n"
-    "/as mom, /as dad, /as didi, /as teen - act as that family member\n"
+    "/as mom, /as dad, /as didi, /as teen, /as dadi - act as that family member\n"
     "/whoami - who you are acting as\n"
     "/reset - reset demo orders and mandate\n"
     "Then send a grocery list, a parchi photo, or a dish like 'rajma chawal for 6'."
@@ -506,7 +506,7 @@ class WhatsAppChannel:
         if cmd == "as":
             mid = PERSONAS.get(arg)
             if not mid:
-                return "Use: /as mom, /as dad, /as didi or /as teen"
+                return "Use: /as mom, /as dad, /as didi, /as teen or /as dadi"
             self.repo.put("demo_acting", msg.phone, {"member_id": mid})
             m = agent.app.hh.member(mid)
             agent.app.audit.log("demo_persona_set", actor=mask_phone(msg.phone), member=mid)

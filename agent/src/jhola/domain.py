@@ -21,6 +21,28 @@ ROLES = ("admin", "adult", "house_help", "teen", "elder")
 CATEGORIES = ("staples", "dairy", "vegetables", "fruits", "snacks", "beverages", "energy_drinks", "stationery",
               "personal_care", "cleaning", "pooja")
 GROCERIES = ("staples", "dairy", "vegetables", "fruits")
+DIET_PROFILES = ("none", "veg", "vegan", "jain", "eggetarian")
+ALLERGENS = ("peanut", "tree_nut", "milk", "gluten", "soy", "egg", "sesame", "mustard")
+# Plain words (English / Hinglish) for the catalog's allergen vocabulary.
+ALLERGEN_WORDS = {
+    "peanut": ("peanut", "peanuts", "moongfali", "mungfali", "moongphali", "groundnut", "singdana"),
+    "tree_nut": ("tree_nut", "tree nut", "tree nuts", "nuts", "nut", "dry fruits", "badam", "kaju", "almond",
+                 "almonds", "cashew", "cashews", "walnut", "pista", "hazelnut"),
+    "milk": ("milk", "dairy", "doodh", "lactose", "paneer", "curd", "dahi"),
+    "gluten": ("gluten", "wheat", "gehun", "atta", "maida"),
+    "soy": ("soy", "soya", "soybean", "soyabean"),
+    "egg": ("egg", "eggs", "anda", "ande"),
+    "sesame": ("sesame", "til"),
+    "mustard": ("mustard", "sarson", "rai"),
+}
+
+
+def normalize_allergen(word: str) -> str | None:
+    w = _norm(word)
+    for key, words in ALLERGEN_WORDS.items():
+        if w == key or w in words:
+            return key
+    return None
 
 MIN_RATING = 4.0
 QTY_WORDS = {"kg", "g", "gm", "gram", "grams", "l", "ltr", "litre", "ml", "packet", "packets", "pkt",
@@ -120,6 +142,11 @@ class Member:
     order_cap_inr: int | None = None        # above this per order the admin must approve
     allowed_categories: list[str] = field(default_factory=list)
     welcomed: bool = True
+    # Dietary profile: checked by Cedar against the member an item is FOR (context.beneficiary).
+    diet_profile: str = "none"              # none | veg | vegan | jain | eggetarian
+    allergies: list[str] = field(default_factory=list)
+    vrat_until: str | None = None           # ISO date; fasting mode (only vrat-friendly food) until then
+    max_caffeine_mg: int | None = None      # caffeine allowed per order
     # Active temporary delegation (filled by Jhola from the rules collection), enforced by Cedar
     # through context.today: {"cap_inr", "starts_on", "until"}.
     delegation: dict | None = None
@@ -129,12 +156,30 @@ class Member:
         phone = config.ADMIN_PHONE if m.get("phone") == "ADMIN_PHONE_PLACEHOLDER" else m.get("phone", "")
         return cls(m["id"], m["name"], m.get("display") or m["name"], m["role"], phone,
                    m.get("language", "hinglish"), m.get("daily_cap_inr"), m.get("order_cap_inr"),
-                   list(m.get("allowed_categories") or []), bool(m.get("welcomed", True)))
+                   list(m.get("allowed_categories") or []), bool(m.get("welcomed", True)),
+                   m.get("diet_profile") or "none", list(m.get("allergies") or []), m.get("vrat_until") or None,
+                   m.get("max_caffeine_mg"))
 
     def to_doc(self) -> dict:
         return {"id": self.id, "name": self.name, "display": self.display, "role": self.role, "phone": self.phone,
                 "language": self.language, "daily_cap_inr": self.daily_cap_inr, "order_cap_inr": self.order_cap_inr,
-                "allowed_categories": self.allowed_categories, "welcomed": self.welcomed}
+                "allowed_categories": self.allowed_categories, "welcomed": self.welcomed,
+                "diet_profile": self.diet_profile, "allergies": self.allergies, "vrat_until": self.vrat_until,
+                "max_caffeine_mg": self.max_caffeine_mg}
+
+    def diet_text(self) -> str:
+        """One short line, e.g. "Jain, allergic to peanut, vrat until 2026-10-02"; "" when nothing is set."""
+        parts = []
+        if self.diet_profile and self.diet_profile != "none":
+            parts.append({"veg": "vegetarian", "jain": "Jain", "vegan": "vegan", "eggetarian": "eggetarian"}
+                         .get(self.diet_profile, self.diet_profile))
+        if self.allergies:
+            parts.append("allergic to " + ", ".join(a.replace("_", " ") for a in self.allergies))
+        if self.vrat_until:
+            parts.append(f"vrat (fasting) until {self.vrat_until}")
+        if self.max_caffeine_mg is not None:
+            parts.append(f"max {self.max_caffeine_mg} mg caffeine per order")
+        return ", ".join(parts)
 
 
 def demo_household_raw() -> dict:
@@ -351,6 +396,36 @@ class Pantry:
         for r in self.hh.history():
             out.setdefault(r["sku"], []).append(date.fromisoformat(r["date"]))
         return out
+
+    def related(self, sku: str) -> list[str]:
+        """SKUs of the same item family (same category, overlapping leading tags): doodh in any pack."""
+        base = self.catalog.get(sku)
+        if not base:
+            return [sku]
+        return [it["id"] for it in self.catalog.items if set(it["tags"][:2]) & set(base["tags"][:2])
+                and it["category"] == base["category"]]
+
+    def status_for_sku(self, sku: str, today: date) -> dict:
+        """Pantry status of an item family, shelf life aware: a perishable bought long ago is not "at home"
+        however regular the cycle is. Returns the best (still at home) status, with who bought it last."""
+        best = None
+        for s in self.related(sku):
+            st = self.status(s, today)
+            if not st.get("last_bought"):
+                continue
+            it = self.catalog.get(s) or {}
+            shelf = it.get("shelf_life_days")
+            if shelf:
+                last = date.fromisoformat(st["last_bought"])
+                run_out = min(date.fromisoformat(st["expected_run_out"]), last + timedelta(days=int(shelf)))
+                st["expected_run_out"] = run_out.isoformat()
+                st["in_pantry"] = run_out > today + timedelta(days=1)
+            st["by"] = next((self.hh.display_of(r.get("by", "")) for r in reversed(self.hh.history())
+                             if r["sku"] == s and r["date"] == st["last_bought"]), "")
+            if st["in_pantry"]:
+                return st
+            best = best or st
+        return best or {"sku": sku, "in_pantry": False, "reason": "never bought"}
 
     def cycle_days(self, sku: str, dates: list[date]) -> float:
         ds = sorted(set(dates))
