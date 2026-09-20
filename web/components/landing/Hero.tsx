@@ -19,14 +19,18 @@ export default function Hero() {
             id="hero-title"
             className="font-display mt-6 text-[2.6rem] font-semibold leading-[1.05] tracking-tight sm:text-6xl"
           >
-            Send the parchi.
+            The agent builds the cart.
             <br />
-            <span className="text-jute">Jhola</span> handles the rest.
+            <span className="text-jute">Jhola</span> decides if it can pay.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-soft">
-            Your family already sends the kirana a handwritten list, a voice note or a text. Jhola reads it on
-            WhatsApp, matches every item to your usual brands, checks your household rules and orders, with an
-            approval tap whenever it matters.
+            Jhola is the approval layer for agents that spend your money: the model builds the cart, a Cedar
+            policy engine outside the model decides whether it may pay, and every decision cites the rule that
+            made it.
+          </p>
+          <p className="mt-4 max-w-xl text-lg leading-relaxed text-ink-soft">
+            It runs on WhatsApp for an Indian household &mdash; a handwritten parchi, a Hindi voice note, a
+            house help, a teenager &mdash; because that is where the delegation problem is most obvious.
           </p>
           <ul className="mt-7 flex flex-wrap gap-2" aria-label="Ways to order">
             {inputs.map((i) => (

@@ -1,6 +1,7 @@
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import Hero from "@/components/landing/Hero";
+import WhyNow from "@/components/landing/WhyNow";
 import HowItWorks from "@/components/landing/HowItWorks";
 import HouseholdRules from "@/components/landing/HouseholdRules";
 import Safety from "@/components/landing/Safety";
@@ -12,6 +13,7 @@ export default function Home() {
       <SiteHeader />
       <main>
         <Hero />
+        <WhyNow />
         <HowItWorks />
         <HouseholdRules />
         <Safety />

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
-export const alt = "Jhola - Household ordering on WhatsApp";
+export const alt = "Jhola - the approval layer for agents that spend your money";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -31,10 +31,10 @@ export default async function Image() {
             <div style={{ fontSize: 64, fontWeight: 700 }}>Jhola</div>
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 58, fontWeight: 700, lineHeight: 1.05 }}>Send the parchi.</div>
-            <div style={{ fontSize: 58, fontWeight: 700, lineHeight: 1.05, color: "#A77B4F" }}>Jhola handles the rest.</div>
+            <div style={{ fontSize: 58, fontWeight: 700, lineHeight: 1.05 }}>The agent builds the cart.</div>
+            <div style={{ fontSize: 58, fontWeight: 700, lineHeight: 1.05, color: "#A77B4F" }}>Jhola decides if it can pay.</div>
             <div style={{ marginTop: 26, fontSize: 29, lineHeight: 1.3, color: "#4A5480" }}>
-              Household ordering on WhatsApp, with family rules the AI cannot bypass.
+              A policy engine outside the model, and a reason on every decision.
             </div>
           </div>
           <div style={{ display: "flex", height: 14, background: "#E0A526", borderRadius: 7, width: 220 }} />

@@ -12,7 +12,8 @@ export default function SiteFooter() {
             <span className="font-display text-xl font-semibold">Jhola</span>
           </div>
           <p className="mt-3 max-w-sm text-sm leading-relaxed text-ink-soft">
-            Household ordering on WhatsApp, with family rules that the AI cannot talk its way around.
+            The approval layer for agents that spend your money. The model builds the cart; a policy engine
+            outside the model decides whether it may pay.
           </p>
           <p className="mt-4 text-sm text-ink-soft">
             Jhola is a student project built for the {HACKATHON_NAME} hackathon.

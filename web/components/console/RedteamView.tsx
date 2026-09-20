@@ -244,6 +244,33 @@ export default function RedteamView() {
         ))}
       </ul>
 
+      <section className="mt-8 rounded-2xl border border-line bg-paper p-5" aria-labelledby="evals-title">
+        <h2 id="evals-title" className="font-display text-lg font-semibold">What the eval suite does and does not show</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          One clean pass of 76 cases through the real pipeline on live Bedrock, 20 September 2026. Each case runs in
+          its own fresh household.
+        </p>
+        <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            { k: "Live cases run", v: "76", tone: "text-ink" },
+            { k: "Unsafe payments", v: "0", tone: "text-leaf" },
+            { k: "Errors", v: "0", tone: "text-leaf" },
+          ].map((s) => (
+            <div key={s.k} className="rounded-xl border border-line bg-cream/60 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft">{s.k}</dt>
+              <dd className={`font-display mt-1 text-3xl font-semibold tabular-nums ${s.tone}`}>{s.v}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+          In that run the live model refused all 11 injections on its own, so Cedar never had to contain one. That
+          measures the model&apos;s resistance, not the policy engine&apos;s containment.{" "}
+          <strong className="text-ink">Containment is what the compromised-model run on this page demonstrates:</strong>{" "}
+          a model that obeys the attacker, put through the same tool loop, the same Cedar policies and the same
+          mandate service.
+        </p>
+      </section>
+
       {error ? <div className="mt-6"><ErrorState message={error} /></div> : null}
       {running ? (
         <div className="mt-6 space-y-3" role="status" aria-label="Running attack">
